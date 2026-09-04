@@ -1,0 +1,44 @@
+{
+  "dataset": "UCI SMS Spam Collection (5,574 real labelled SMS, UK English, ~2011)",
+  "task": "SMS spam vs ham \u2014 NOT Indian banking-scam detection",
+  "test_messages": 1115,
+  "accuracy": 0.9865,
+  "precision_spam": 0.9589,
+  "recall_spam": 0.9396,
+  "f1_spam": 0.9492,
+  "roc_auc": 0.9917,
+  "confusion_matrix": {
+    "true_negative": 960,
+    "false_positive": 6,
+    "false_negative": 9,
+    "true_positive": 140
+  },
+  "vocabulary_size": 12007,
+  "seed": 42,
+  "hyperparameters": {
+    "vectoriser": {
+      "lowercase": true,
+      "ngram_range": [
+        1,
+        2
+      ],
+      "min_df": 2,
+      "max_features": 20000,
+      "sublinear_tf": false,
+      "norm": "l2"
+    },
+    "classifier": {
+      "C": 4.0,
+      "class_weight": "balanced",
+      "max_iter": 1000,
+      "solver": "liblinear",
+      "random_state": 42
+    }
+  },
+  "onnx_parity": {
+    "scope": "logistic regression only; the vectoriser is reimplemented in Kotlin",
+    "max_probability_delta": 1.2030997609269178e-07,
+    "label_disagreements": 0,
+    "checked_messages": 1115
+  }
+}

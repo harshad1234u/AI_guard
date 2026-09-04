@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Colours come from Compose (TrustLensTheme). This platform theme only supplies a
+         no-action-bar window so Compose owns the whole surface. -->
+    <style name="Theme.TrustLens" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

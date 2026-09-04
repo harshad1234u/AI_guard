@@ -1,0 +1,25 @@
+*.iml
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# Model artefacts are large and machine-specific; they are side-loaded, not committed.
+*.onnx
+# ...except the shipped classifier. It is a 120 KB build input, not a side-loaded
+# artefact, and the app cannot run without it. Its matched pair — the vocabulary and the
+# parity vectors — are plain text and tracked normally.
+!ai/src/main/assets/scam-clf.onnx
+*.tflite
+*.litertlm
+*.task
+
+# Never commit provider credentials (VirusTotal, URLhaus).
+secrets.properties
