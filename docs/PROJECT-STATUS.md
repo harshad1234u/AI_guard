@@ -1,8 +1,9 @@
 # TrustLens — Project Status & Build Log
 
 **Event:** iQOO Hackathon 2026 — Chennai City Battle, 12–13 Sept 2026 (30-hour phone-first build)
-**Last updated:** 2026-09-05, end of Phase 11B
-**State:** Phases 1–11B complete. Phase 12 (demo/release hardening + first Git commit) in progress.
+**Last updated:** 2026-09-05, end of Phase 14C
+**State:** Phases 1–14C complete. Device regression, latency measurement, the URLhaus
+historical-host fix and physical-input validation are all done on real hardware — see §11.
 
 ---
 
@@ -48,7 +49,14 @@ Required wording for demo docs and pitch:
 > **98.65% held-out accuracy on the UCI SMS Spam Collection.**
 
 Never describe this as "TrustLens scam-detection accuracy". It is a public English SMS spam
-corpus, not Indian banking scams. The app's own UI already says this.
+corpus, not Indian banking scams.
+
+The figure lives in `tools/model-metrics.json`. **The app's UI does not display it** — the
+result screen states the model version, the execution backend, and the training-corpus caveat
+("trained on a public English SMS spam corpus, not on Indian banking scams"), but makes no
+numerical accuracy claim at all. That is the safer position and is deliberate: if the number is
+quoted anywhere — pitch, slide, README — it must carry the full sentence above. Corrected in
+Phase 13, which found this paragraph previously asserted the UI showed it.
 
 ---
 
@@ -101,6 +109,12 @@ report, and explicit user approval before the next began.
 | **11** | Risk Engine Calibration — fixed `SUSPICIOUS_URL` dedup underweighting at its cause. |
 | **11A** | Text-path UPI destination scoring. |
 | **11B** | Safe-action context guard for `DO_NOT_PAY`. |
+| **12** | Demo / release hardening. Full test run, release APK, first Git commit (`f067704`). |
+| **13** | Final security & hackathon readiness audit — **PASS**, no BLOCKER or HIGH findings. Read-only; no code changed. |
+| **14** | Device regression + first latency measurement on POCO X6. **PASS.** Found one HIGH defect (URLhaus historical hosts). |
+| **14A** | URLhaus historical-vs-active verdict calibration. **PASS.** `www.google.com` 40→18, CONFIRMED→SUSPICIOUS. |
+| **14B** | Physical-input validation — real camera OCR, controlled QR payloads, real spoken audio. **PASS.** |
+| **14C** | Shared-host threat-intel calibration — URL-level vs host-level URLhaus evidence. **PASS.** |
 
 ### Phase 9 — the ONNX export trap (important, do not regress)
 
@@ -307,17 +321,134 @@ providers · cloud LLM reasoning · **any LLM anywhere in the scoring path**.
 
 ---
 
-## 10. Next: Phase 12 — Demo / Release Hardening
+## 10. Phase 12 & 13 — completed
 
-- [ ] Full `./gradlew test`
-- [ ] Build release APK
-- [ ] Install on POCO X6
-- [ ] Re-run all six surfaces: text · URL · camera OCR · QR · voice · threat intel
-- [ ] Verify safe-action behaviour
-- [ ] Verify offline / degraded behaviour
-- [ ] Verify no secrets in Git, source, APK resources or logs
-- [ ] Verify `secrets.properties` remains ignored
-- [ ] Verify `scam-clf.onnx` is intentionally tracked
-- [ ] **Only then**: first Git commit
+**Phase 12 — demo / release hardening.** Full `./gradlew test`, release APK built, secrets
+verified absent from Git/source/APK-resources/logs, `secrets.properties` confirmed ignored,
+`scam-clf.onnx` confirmed intentionally tracked. Repo committed: **`f067704` on `master`**,
+working tree clean. (The repo is no longer uncommitted — the previous revision of this document
+said "no commits yet", which was stale.)
 
-Repo is `git init`-ed on `master` with **no commits yet**.
+**Phase 13 — final security & hackathon readiness audit: PASS.** Read-only; no source file was
+modified. Verified this run:
+
+- No LLM anywhere. The dependency catalogue has zero LLM/GenAI/TFLite/MediaPipe entries, and the
+  shipped ONNX graph contains exactly one operator: `LinearClassifier`. The sklearn tokenizer has
+  not leaked back in.
+- No action capability. A grep for `startActivity` / `Intent(` / `ACTION_VIEW` / `Uri.parse` /
+  `WebView` across all eight modules returns **one** hit: `RecognizerIntent` handed to
+  `SpeechRecognizer.startListening`, never to `startActivity`. No `Runtime.exec`, no
+  `ProcessBuilder`, no `Socket`, no SMS or payment API.
+- UNKNOWN ≠ SAFE, proven numerically rather than by inspection. In the calibration matrix,
+  baseline `B` = 43, `G + both NO_DETECTION` = 43, `H + both UNKNOWN` = 43. Exactly +0.
+- Secrets: all 353 tracked files scanned byte-for-byte against both live key values — zero
+  matches, and `secrets.properties` has never been in history.
+- 445 tests, 0 failures, 0 errors, 4 skipped (opt-in live provider).
+
+Audit findings: 0 BLOCKER, 0 HIGH, 1 MEDIUM (API keys extractable from the APK — known and
+accepted, see §7.1), 4 LOW, 4 INFO.
+
+---
+
+## 11. Phases 14 / 14A / 14B — device validation (all PASS)
+
+Device: **POCO X6 5G** (`23122PCD1I`, `garnet`), **Android 16 / API 36**, arm64-v8a, release APK
+0.1.0. The POCO is **not** an iQOO 15; every number here is a POCO number.
+
+> "The current classifier runs through ONNX Runtime on CPU. iQOO 15 Snapdragon NPU/QNN
+> validation is still pending target-hardware access."
+
+### Measured latency (Phase 14) — the project's first real numbers
+
+| Operation | Median | Range | n |
+|---|---|---|---|
+| App cold start (`am start -W`) | 440 ms | 415–564 | 7 |
+| Text E2E, cold (incl. model load) | 405 ms | 219–534 | 6 |
+| Text E2E, warm | below one display frame (< ~12 ms) | — | 13 attempts, never repainted |
+| URL E2E online (real providers) | 1023 ms | 696–1153 | 8 |
+| URL E2E offline | 125 ms | 81–284 | 4 |
+| Threat-intel round trip (derived) | ≈ 900 ms | — | — |
+
+Cold start + first analysis ≈ **0.85 s to first verdict**. **Model cold load dominates, not
+inference.** QR / camera-OCR / voice latency is **NOT MEASURED** — `screenrecord` cannot capture
+the CameraX preview (hardware overlay: 5 frames in 10 s) and `uiautomator` polling costs ~2.6 s
+per sample. That is a measurement-tooling limit, not a performance finding. Do not estimate it.
+
+### Phase 14A — URLhaus historical-host calibration
+
+URLhaus tracks URLs and never forgets one, so every large shared host accumulates permanent
+entries. `describeListing` returned CONFIRMED for any `query_status:"ok"`, which called
+`www.google.com` malicious (+40). Now graded on the provider's own per-entry `url_status`:
+**any `online` entry → CONFIRMED; entries but all `offline` → SUSPICIOUS.** Historical abuse
+still adds risk (+18) and is never worded as safe. **No weight, band, threshold, confidence rule
+or SafeAction was touched.**
+
+Live-verified: `example.com` no_results → NO_DETECTION · `www.google.com` 4 entries/0 online →
+SUSPICIOUS · `github.com` 100/19 online → CONFIRMED · `drive.google.com` 100/9 online → CONFIRMED.
+
+**14A residue, closed by 14C:** hosts *currently* serving malware still read CONFIRMED even
+when household names — `github.com` scored 40/100 MEDIUM. Resolved below.
+
+### Phase 14C — URL-level vs host-level URLhaus evidence
+
+The host response already **enumerates the offending URLs**, so the sharper question can be
+answered **on this device**: is the link the user is holding one of them? The observed URL is
+passed to the adapter as local context (`ReputationSource.lookup(subject, observedUrls)`,
+defaulted so no other provider changes) and matched locally. **The request is still `host=` and
+nothing else — the privacy rule is untouched, and a test pins it.**
+
+Four cases, strongest evidence first:
+
+| Situation | Verdict | Wording |
+|---|---|---|
+| This exact URL listed **and online** | CONFIRMED | "reports **this exact URL** as malicious and currently online" |
+| This exact URL listed, offline | SUSPICIOUS | "**this exact URL** … not currently online" |
+| No URL context (bare host asked about) | Phase 14A host grading | unchanged |
+| Host listed, this URL not among entries | SUSPICIOUS | "a report about **the host, not about this URL**" |
+
+The last case is **never** NO_DETECTION: URLhaus returns at most 100 of a possibly far larger
+set (`url_count` is 7,939 for `github.com`), so absence from the returned slice is not evidence
+of absence — the summary says so in as many words. No allowlist, no hardcoded domain; the
+adapter has no idea which hosts are famous.
+
+Device-verified on POCO X6, same host, opposite verdicts:
+
+```
+https://github.com                      18/100 LOW      SUSPICIOUS  "not among them"
+https://github.com/<listed-online-path>  40/100 MEDIUM  CONFIRMED   "this exact URL"
+https://example.com                       0/100 LOW     NO_DETECTION (unchanged)
+```
+
+Detection of genuinely malicious destinations is therefore **not** weakened — it is now more
+precise than before 14A.
+
+### Phase 14B — physical input, on real hardware
+
+All six surfaces exercised against the release APK with real optics and a real microphone.
+
+| Surface | Result | Evidence |
+|---|---|---|
+| Camera OCR | PASS | Photographed scam sheet → **62/100 HIGH**, ML+18 urgency+10 OTP+22 SBI+12, `DO_NOT_SHARE_OTP` + `REPORT_OR_BLOCK` |
+| QR plain text | PASS | `Hello from TrustLens` → TEXT routing, 12/100 LOW |
+| QR benign URL | PASS | `https://example.com` → URL routing, 0/100, both providers NO_DETECTION |
+| QR bare UPI | PASS | `upi://pay?pa=testmerchant@example` → **10/100 LOW — not fraud** |
+| QR UPI request | PASS | +urgency/amount/note → **35/100 GUARDED**, `DO_NOT_PAY` |
+| QR dedup/debounce | PASS | Code held in frame 24 s after rescan → decoded **once**, no re-analysis loop |
+| Voice | PASS | Real spoken audio → **26/100 GUARDED**, OTP+22, `DO_NOT_SHARE_OTP`, mic released after 5.9 s |
+
+Every score was the exact sum of its stated reasons. **No browser launch, no payment-app launch,
+no `ACTION_VIEW`, no image or audio persisted, no external data dir ever created, no key or
+content in logcat** (152,563 lines swept).
+
+Real OCR artefacts worth remembering: ML Kit read `will` as `wilI`, and captured the physical
+keyboard behind the monitor (`ESC`, `F2`, `BACKSPACE`, …) as extra tokens. The deterministic
+layer was unaffected — noise tokens carry no indicators.
+
+### Still open
+
+- QR/OCR/voice latency (measurement tooling, see above)
+- Instrumented tests unrunnable on MIUI (`INSTALL_FAILED_USER_RESTRICTED`); `connectedAndroidTest`
+  also **uninstalls the app** — reinstall before continuing device work
+- A host with live abuse whose *specific* URL is beyond URLhaus's 100-entry response window
+  is reported at host level (SUSPICIOUS), not URL level — the honest answer, but less precise
+  than a `/v1/url/` lookup would give, which the hostname-only privacy rule rules out

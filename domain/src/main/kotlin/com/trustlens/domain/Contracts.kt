@@ -33,6 +33,24 @@ interface ReputationSource {
     val sourceName: String
 
     suspend fun lookup(subject: String): ExternalEvidence
+
+    /**
+     * Looks up [subject], optionally telling the provider which concrete URLs on that host
+     * the user is actually asking about.
+     *
+     * [observedUrls] never leaves the device. It exists so an adapter whose response already
+     * enumerates offending URLs can decide, **locally**, whether the link in front of the
+     * user is one of them — the difference between "this URL is reported malicious" and
+     * "this hostname has reported malicious URLs". A large shared host is permanently listed
+     * because someone once abused it, and without this distinction every link on it inherits
+     * a verdict it did not earn.
+     *
+     * The transmitted payload is unchanged: still a hostname, never a path or query. The
+     * default implementation ignores the context entirely, so a provider that cannot use it
+     * needs no code.
+     */
+    suspend fun lookup(subject: String, observedUrls: List<String>): ExternalEvidence =
+        lookup(subject)
 }
 
 /**

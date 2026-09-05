@@ -58,7 +58,10 @@ class AnalyzeTextUseCase @Inject constructor(
 
         // Only registrable domains leave the device. The message itself — which may hold
         // names, amounts, OTPs and account numbers — is never sent to a third party.
-        val report = threatIntel?.investigate(lookupSubjects(indicators))
+        // The URLs go along as *local* context only: a provider that enumerates offending
+        // URLs can then tell "this link is listed" from "something on this host is listed".
+        // Nothing extra is transmitted — see ReputationSource.lookup.
+        val report = threatIntel?.investigate(lookupSubjects(indicators), indicators.urls)
             ?: ThreatIntelReport.NotConsulted
 
         val context = InvestigationContext(

@@ -82,8 +82,19 @@ class ThreatIntelFlowIntegrationTest {
         {"malicious":$malicious,"suspicious":0,"harmless":80,"undetected":15}}}}
     """.trimIndent()
 
+    /*
+     * URLhaus only ever returns entries for the host it was asked about, so a fixture must
+     * list URLs on the host under test. The previous fixture listed `http://x/a.exe` while
+     * every test analysed example.com — harmless while the adapter only counted entries, but
+     * meaningless once Phase 14C started matching the actual link. These are the URLs the
+     * tests below really analyse.
+     */
     private val urlhausListing = """
-        {"query_status":"ok","urls":[{"url":"http://x/a.exe","url_status":"online"}]}
+        {"query_status":"ok","urls":[
+          {"url":"https://example.com","url_status":"online"},
+          {"url":"https://example.com/page","url_status":"online"},
+          {"url":"https://sbi-kyc.example.com/verify","url_status":"online"}
+        ]}
     """.trimIndent()
 
     private fun sources(
@@ -388,4 +399,166 @@ class ThreatIntelFlowIntegrationTest {
         assertThat(results.map { it.risk.score }.distinct()).hasSize(1)
         assertThat(results.map { it.externalEvidence }.distinct()).hasSize(1)
     }
+
+    // ---- URLhaus historical-vs-active grading (Phase 14A) ------------------------------------
+
+    /** Four entries, every one offline — the live shape for an ordinary shared host. */
+    private val urlhausHistoricalOnly = """
+        {"query_status":"ok","urls":[
+          {"url":"http://x/a","url_status":"offline"},
+          {"url":"http://x/b","url_status":"offline"},
+          {"url":"http://x/c","url_status":"offline"},
+          {"url":"http://x/d","url_status":"offline"}]}
+    """.trimIndent()
+
+    /** A bare, structurally unremarkable URL, so the provider's contribution is the variable. */
+    private val mildLink = "https://example.com/page"
+
+    @Test
+    fun `a historical-only urlhaus listing still raises the score above no evidence`() = runTest {
+        val noReport = urlUseCase(sources())(mildLink)
+        val historical = urlUseCase(sources(urlhausBody = urlhausHistoricalOnly))(mildLink)
+
+        // The whole point of SUSPICIOUS rather than NO_DETECTION: past abuse is evidence.
+        assertThat(historical.risk.score).isGreaterThan(noReport.risk.score)
+        assertThat(historical.externalEvidence.map { it.verdict })
+            .contains(ReputationVerdict.SUSPICIOUS)
+    }
+
+    @Test
+    fun `a historical-only listing scores below an actively serving host`() = runTest {
+        val historical = urlUseCase(sources(urlhausBody = urlhausHistoricalOnly))(mildLink)
+        val active = urlUseCase(sources(urlhausBody = urlhausListing))(mildLink)
+
+        // Present-tense malice must outrank a lapsed record, or the downgrade meant nothing.
+        assertThat(active.risk.score).isGreaterThan(historical.risk.score)
+        assertThat(active.externalEvidence.map { it.verdict }).contains(ReputationVerdict.CONFIRMED)
+    }
+
+    @Test
+    fun `a historical-only listing is never reported as no detection or safety`() = runTest {
+        val result = urlUseCase(sources(urlhausBody = urlhausHistoricalOnly))(mildLink)
+
+        val urlhaus = result.externalEvidence.first { it.sourceName == "URLhaus" }
+        assertThat(urlhaus.verdict).isNotEqualTo(ReputationVerdict.NO_DETECTION)
+        assertThat(urlhaus.verdict).isNotEqualTo(ReputationVerdict.CONFIRMED)
+        assertThat(urlhaus.summary).doesNotContain("safe")
+    }
+
+    @Test
+    fun `two independent providers confirming still corroborate as before`() = runTest {
+        val result = urlUseCase(
+            sources(virusTotalBody = vtBody(30), urlhausBody = urlhausListing),
+        )(mildLink)
+
+        // Both answer CONFIRMED; the diminishing-corroboration schedule is untouched by 14A.
+        val confirmed = result.externalEvidence.filter {
+            it.verdict == ReputationVerdict.CONFIRMED
+        }
+        assertThat(confirmed.map { it.sourceName }).containsExactly("URLhaus", "VirusTotal")
+        assertThat(result.risk.level).isAtLeast(RiskLevel.HIGH)
+    }
+
+    @Test
+    fun `unknown and no-detection still contribute exactly zero after the change`() = runTest {
+        val baseline = urlUseCase(emptySet())(mildLink)
+        val noDetection = urlUseCase(sources())(mildLink)
+        val unknown = urlUseCase(
+            sources(virusTotalCode = 429, urlhausCode = 429),
+        )(mildLink)
+
+        // Principle 2 is not negotiable and 14A must not have disturbed it.
+        assertThat(noDetection.risk.score).isEqualTo(baseline.risk.score)
+        assertThat(unknown.risk.score).isEqualTo(baseline.risk.score)
+    }
+    // ---- URL-level vs host-level threat intel (Phase 14C) -----------------------------------
+
+    /** A busy shared host: live reports, none of them the link under test. */
+    private val sharedHost = """
+        {"query_status":"ok","url_count":"7939","urls":[
+          {"url":"https://example.com/someone/releases/download/x/mal.exe","url_status":"online"},
+          {"url":"https://example.com/another/raw/main/dropper.bin","url_status":"online"}
+        ]}
+    """.trimIndent()
+
+    @Test
+    fun `a link that is itself listed reaches the engine as confirmed`() = runTest {
+        val result = urlUseCase(sources(urlhausBody = sharedHost))(
+            "https://example.com/someone/releases/download/x/mal.exe",
+        )
+
+        val urlhaus = result.externalEvidence.first { it.sourceName == "URLhaus" }
+        assertThat(urlhaus.verdict).isEqualTo(ReputationVerdict.CONFIRMED)
+        assertThat(result.risk.recommendedActions).contains(SafeAction.DO_NOT_OPEN_LINK)
+    }
+
+    @Test
+    fun `an ordinary link on the same listed host is not confirmed`() = runTest {
+        val result = urlUseCase(sources(urlhausBody = sharedHost))("https://example.com/page")
+
+        val urlhaus = result.externalEvidence.first { it.sourceName == "URLhaus" }
+        assertThat(urlhaus.verdict).isEqualTo(ReputationVerdict.SUSPICIOUS)
+        assertThat(urlhaus.details["scope"]).isEqualTo("host")
+    }
+
+    @Test
+    fun `the listed link scores strictly higher than an ordinary link on the same host`() =
+        runTest {
+            val listed = urlUseCase(sources(urlhausBody = sharedHost))(
+                "https://example.com/someone/releases/download/x/mal.exe",
+            )
+            val ordinary = urlUseCase(sources(urlhausBody = sharedHost))(
+                "https://example.com/page",
+            )
+
+            // Detection of the genuinely malicious link must not be weakened by 14C, and the
+            // ordinary link must not inherit its neighbour's verdict.
+            assertThat(listed.risk.score).isGreaterThan(ordinary.risk.score)
+        }
+
+    @Test
+    fun `an ordinary link on a listed host still contributes risk above no evidence`() = runTest {
+        val noReport = urlUseCase(sources())("https://example.com/page")
+        val onListedHost = urlUseCase(sources(urlhausBody = sharedHost))(
+            "https://example.com/page",
+        )
+
+        // Host-level concern is real evidence: it must not collapse to "nothing found".
+        assertThat(onListedHost.risk.score).isGreaterThan(noReport.risk.score)
+        // Scoped to URLhaus: VirusTotal answering NO_DETECTION here is correct and separate.
+        val urlhaus = onListedHost.externalEvidence.first { it.sourceName == "URLhaus" }
+        assertThat(urlhaus.verdict).isNotEqualTo(ReputationVerdict.NO_DETECTION)
+    }
+
+    @Test
+    fun `evidence wording distinguishes url-level from host-level claims`() = runTest {
+        val listed = urlUseCase(sources(urlhausBody = sharedHost))(
+            "https://example.com/someone/releases/download/x/mal.exe",
+        ).externalEvidence.first { it.sourceName == "URLhaus" }
+        val ordinary = urlUseCase(sources(urlhausBody = sharedHost))(
+            "https://example.com/page",
+        ).externalEvidence.first { it.sourceName == "URLhaus" }
+
+        assertThat(listed.summary).contains("this exact URL")
+        assertThat(ordinary.summary).contains("about the host, not about this URL")
+    }
+
+    @Test
+    fun `only the hostname is transmitted even though the full url is matched locally`() =
+        runTest {
+            val transport = FakeTransport.replying(200, sharedHost)
+            val useCase = AnalyzeUrlUseCase(
+                urlAnalyzer = urlAnalyzer,
+                riskAssessor = riskEngine,
+                threatIntel = InvestigateIndicatorsUseCase(
+                    setOf(UrlhausSource(transport, FakeCredentials())),
+                ),
+            )
+
+            useCase("https://example.com/secret/path?token=abc123")
+
+            // The privacy rule is unchanged by 14C: matching happens on this device.
+            assertThat(transport.requestedUrl).doesNotContain("secret")
+            assertThat(transport.requestedUrl).doesNotContain("abc123")
+        }
 }

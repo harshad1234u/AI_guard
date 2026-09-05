@@ -48,8 +48,10 @@ class AnalyzeUrlUseCase @Inject constructor(
         )
 
         // Only the hostname is ever sent to a provider — never the path or query, which can
-        // carry per-victim tokens that are nobody else's business.
-        val report = threatIntel?.investigate(listOfNotNull(analysis.host))
+        // carry per-victim tokens that are nobody else's business. The full URL is handed
+        // over as *local* context so a provider that lists offending URLs can compare on
+        // this device; it is matched here, not uploaded.
+        val report = threatIntel?.investigate(listOfNotNull(analysis.host), indicators.urls)
             ?: ThreatIntelReport.NotConsulted
 
         val context = InvestigationContext(

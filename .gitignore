@@ -23,3 +23,19 @@ captures/
 
 # Never commit provider credentials (VirusTotal, URLhaus).
 secrets.properties
+
+# Python bytecode from tools/train_classifier.py. Generated, machine-specific, never a build input.
+__pycache__/
+*.pyc
+
+# Training data and experiment artefacts. `model by me/` holds 345 MB, including a 358 MB
+# CSV that is over GitHub's 100 MB per-file hard limit — committing it would make the
+# repository permanently unpushable. It is research input, never a build input: no line of
+# app code reads anything in here.
+model by me/
+
+# Stale Eclipse/IDE output folders holding duplicate copies of the frozen engine sources.
+# Gradle builds into build/, not bin/; nothing in the app reads these.
+domain/bin/
+investigation/bin/
+riskengine/bin/

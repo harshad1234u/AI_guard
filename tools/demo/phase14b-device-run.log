@@ -1,0 +1,121 @@
+PHASE 14B PHYSICAL INPUT RUN - Sat Sep  5 15:45:56 IST 2026
+
+########## QR 1/5 PLAIN TEXT (expect TEXT routing) ##########
+Hello from TrustLens
+Decoded on this device. TrustLens has not opened this code, contacted anything in it, or started any payment.
+12 / 100
+LOW RISK
+Confidence: medium
+Proceed carefully
+Model: uci-sms-tfidf-logreg-v1, running on CPU. It is trained on a public English SMS spam corpus, not on Indian banking scams — the scam-specific findings above come from deterministic analysis.
+Why?
+On-device classifier rates this as likely spam or scam wording (+12)
+External verification
+No external source could be consulted. Nothing here confirms this content is safe — it means nobody was asked.
+What this suggests
+A risk signal was identified in this content.
+Recommended
+Scan another code
+
+########## QR 2/5 BENIGN URL (expect URL routing) ##########
+0 / 100
+LOW RISK
+Confidence: high
+Proceed carefully
+No text classifier applies here — there is no message wording to read. This assessment comes from deterministic analysis.
+Why?
+URLhaus has no report for example.com — this is not a confirmation of safety (+0)
+VirusTotal has no report for example.com — this is not a confirmation of safety (+0)
+Evidence
+Link: https://example.com
+External verification
+–
+URLhaus
+URLhaus has no report for example.com — this is not a confirmation of safety
+VirusTotal
+No VirusTotal engine currently flags example.com — this is not a confirmation of safety
+Recommended
+Scan another code
+
+########## QR 3/5 BARE UPI (must NOT be fraud) ##########
+10 / 100
+LOW RISK
+Confidence: low
+Proceed carefully
+No text classifier applies here — there is no message wording to read. This assessment comes from deterministic analysis.
+Threat intelligence unavailable. This assessment is based on on-device analysis only — it is not an external verification.
+Why?
+Asks for a UPI payment to a recipient that has not been verified (+10)
+Evidence
+UPI ID: testmerchant@example
+External verification
+No external source could be consulted. Nothing here confirms this content is safe — it means nobody was asked.
+What this suggests
+Seeks a payment to a destination that has not been independently verified.
+External verification was incomplete. This assessment rests on on-device analysis alone.
+Recommended
+Do not pay
+Verify through the official app or helpline
+
+########## QR 4/5 UPI PAYMENT REQUEST (expect DO_NOT_PAY) ##########
+URGENT KYC expired pay now to avoid block
+Decoded on this device. TrustLens has not opened this code, contacted anything in it, or started any payment.
+35 / 100
+GUARDED RISK
+Confidence: medium
+Verify before acting
+No text classifier applies here — there is no message wording to read. This assessment comes from deterministic analysis.
+Threat intelligence unavailable. This assessment is based on on-device analysis only — it is not an external verification.
+Why?
+Creates urgency or time pressure (+10)
+Requests a payment (+15)
+Asks for a payment to a UPI ID that has not been verified (+10)
+Evidence
+UPI ID: testmerchant@example
+Amount: INR 4999
+External verification
+No external source could be consulted. Nothing here confirms this content is safe — it means nobody was asked.
+What this suggests
+
+########## QR 5/5 REPEAT of QR2 (dedup/debounce) ##########
+0 / 100
+LOW RISK
+Confidence: high
+Proceed carefully
+No text classifier applies here — there is no message wording to read. This assessment comes from deterministic analysis.
+Why?
+URLhaus has no report for example.com — this is not a confirmation of safety (+0)
+VirusTotal has no report for example.com — this is not a confirmation of safety (+0)
+Evidence
+Link: https://example.com
+External verification
+–
+URLhaus
+URLhaus has no report for example.com — this is not a confirmation of safety
+VirusTotal
+No VirusTotal engine currently flags example.com — this is not a confirmation of safety
+Recommended
+Scan another code
+
+########## OCR: real scam message via camera ##########
+(camera open - capturing in 12s, hold phone at the screen)
+Model: uci-sms-tfidf-logreg-v1, running on CPU. It is trained on a public English SMS spam corpus, not on Indian banking scams — the scam-specific findings above come from deterministic analysis.
+Why?
+On-device classifier rates this as likely spam or scam wording (+18)
+Creates urgency or time pressure (+10)
+Requests an OTP or PIN (+22)
+Claims to be SBI (+12)
+Evidence
+Mentions: SBI
+External verification
+No external source could be consulted. Nothing here confirms this content is safe — it means nobody was asked.
+What this suggests
+Consistent with an impersonation attempt aimed at obtaining authentication details.
+Recommended
+Do not share your OTP or PIN
+Verify through the official app or helpline
+Report or block the sender
+Extracted text
+ESC&#10;URGENT: Your SBI account wilI&#10;be blocked today.&#10;Share the OTP sent to your&#10;phone immediately.&#10;OCR TEST SHEET - Synthetic, no real credentials&#10;F2&#10;%&#10;FS&#10;F7&#10;7&#10;Q search&#10;FL&#10;DELETE&#10;BACKSPACE&#10;LOCH
+
+=== RUN COMPLETE ===

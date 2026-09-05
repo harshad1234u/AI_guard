@@ -48,7 +48,15 @@ class InvestigateIndicatorsUseCase @Inject constructor(
     private val sources: Set<@JvmSuppressWildcards ReputationSource>,
 ) {
 
-    suspend fun investigate(subjects: Collection<String>): ThreatIntelReport {
+    /**
+     * @param observedUrls the concrete URLs these subjects were extracted from, passed to
+     *   providers purely as local context. Nothing here is transmitted — see
+     *   [ReputationSource.lookup].
+     */
+    suspend fun investigate(
+        subjects: Collection<String>,
+        observedUrls: Collection<String> = emptyList(),
+    ): ThreatIntelReport {
         val distinct = subjects
             .map { it.trim().lowercase() }
             .filter { it.isNotEmpty() }
@@ -61,13 +69,14 @@ class InvestigateIndicatorsUseCase @Inject constructor(
             return ThreatIntelReport(evidence = emptyList(), degraded = false)
         }
 
+        val urls = observedUrls.filter { it.isNotBlank() }.distinct()
         val gate = Semaphore(MAX_CONCURRENT_LOOKUPS)
 
         val evidence = coroutineScope {
             distinct.flatMap { subject ->
                 sources.map { source -> source to subject }
             }.map { (source, subject) ->
-                async { gate.withPermit { lookupSafely(source, subject) } }
+                async { gate.withPermit { lookupSafely(source, subject, urls) } }
             }.awaitAll()
         }
 
@@ -90,9 +99,10 @@ class InvestigateIndicatorsUseCase @Inject constructor(
     private suspend fun lookupSafely(
         source: ReputationSource,
         subject: String,
+        observedUrls: List<String>,
     ): ExternalEvidence {
         val result = runCatching {
-            withTimeoutOrNull(LOOKUP_TIMEOUT_MILLIS) { source.lookup(subject) }
+            withTimeoutOrNull(LOOKUP_TIMEOUT_MILLIS) { source.lookup(subject, observedUrls) }
         }
 
         return result.getOrNull()

@@ -39,7 +39,10 @@ class UrlhausSource(
 
     override val sourceName = "URLhaus"
 
-    override suspend fun lookup(subject: String): ExternalEvidence {
+    override suspend fun lookup(subject: String): ExternalEvidence =
+        lookup(subject, emptyList())
+
+    override suspend fun lookup(subject: String, observedUrls: List<String>): ExternalEvidence {
         val host = subject.trim().lowercase()
         if (host.isEmpty()) return unknown(host, "No host to look up")
 
@@ -65,7 +68,7 @@ class UrlhausSource(
         }
 
         return when (response.code) {
-            200 -> parse(host, response.body)
+            200 -> parse(host, response.body, observedUrls)
 
             401, 403 -> unknown(
                 host,
@@ -85,7 +88,11 @@ class UrlhausSource(
         }
     }
 
-    private fun parse(host: String, body: String): ExternalEvidence {
+    private fun parse(
+        host: String,
+        body: String,
+        observedUrls: List<String>,
+    ): ExternalEvidence {
         val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
             ?: return unknown(
                 host,
@@ -98,7 +105,7 @@ class UrlhausSource(
         }.getOrNull()
 
         return when (status) {
-            "ok" -> describeListing(host, root)
+            "ok" -> describeListing(host, root, observedUrls)
 
             "no_results" -> ExternalEvidence(
                 sourceName = sourceName,
@@ -118,21 +125,48 @@ class UrlhausSource(
     }
 
     /**
-     * An `ok` listing means URLhaus is actively tracking malware URLs on this host.
+     * Grades an `ok` listing into the strongest verdict the evidence actually supports.
      *
-     * Entries flagged `offline` still count: a host that served malware last week is a fact
-     * about that host, not a resolved incident.
+     * ## The two questions URLhaus can answer, and the difference between them
+     *
+     * URLhaus tracks *URLs*, not hosts, and never forgets one. Any host that has ever carried
+     * a reported payload keeps its entries permanently, so every large shared platform is
+     * permanently listed — `github.com` currently reports 7,939 URLs, 19 of them live, all of
+     * them somebody else's `/releases/download/...` path. Answering "is this host listed?"
+     * therefore says almost nothing about the link a user is actually holding.
+     *
+     * Fortunately the host response enumerates the offending URLs themselves, so the sharper
+     * question can be answered **on this device**: is the link in front of the user one of
+     * them? [observedUrls] is compared locally and is never transmitted — the request is still
+     * `host=` and nothing else.
+     *
+     * That yields four cases, in descending order of what the evidence supports:
+     *
+     *  1. **This exact URL is listed and live** -> CONFIRMED. The strongest claim available.
+     *  2. **This exact URL is listed but offline** -> SUSPICIOUS (Phase 14A semantics, now at
+     *     URL precision).
+     *  3. **No URL context at all** — the user asked about a bare host — -> the host-level
+     *     grading from Phase 14A, because the host *is* the question being asked.
+     *  4. **The host is listed, this URL is not among the entries** -> SUSPICIOUS, worded as a
+     *     statement about the host. This is the shared-hosting case.
+     *
+     * ## Why case 4 is never NO_DETECTION
+     *
+     * The API returns at most 100 entries of a possibly far larger set (`url_count` is 7,939
+     * for `github.com`). Not finding the link among the returned entries is therefore *not*
+     * evidence that it is absent from the full list, let alone evidence that it is safe. It
+     * stays SUSPICIOUS and keeps contributing risk. UNKNOWN is not SAFE, and neither is
+     * "not in the first hundred".
+     *
+     * No weight, band or threshold is touched here; only the strength of the claim changes.
      */
-    private fun describeListing(host: String, root: kotlinx.serialization.json.JsonObject):
-        ExternalEvidence {
+    private fun describeListing(
+        host: String,
+        root: kotlinx.serialization.json.JsonObject,
+        observedUrls: List<String>,
+    ): ExternalEvidence {
         val urls = runCatching { root["urls"]!!.jsonArray }.getOrNull()
         val total = urls?.size ?: 0
-
-        val online = urls?.count {
-            runCatching {
-                it.jsonObject["url_status"]!!.jsonPrimitive.contentOrNull == "online"
-            }.getOrDefault(false)
-        } ?: 0
 
         if (total == 0) {
             return unknown(
@@ -142,20 +176,137 @@ class UrlhausSource(
             )
         }
 
-        return ExternalEvidence(
+        val entries = urls.orEmpty().map { element ->
+            val obj = runCatching { element.jsonObject }.getOrNull()
+            val url = obj?.let {
+                runCatching { it["url"]!!.jsonPrimitive.contentOrNull }.getOrNull()
+            }
+            val isOnline = obj?.let {
+                runCatching { it["url_status"]!!.jsonPrimitive.contentOrNull == "online" }
+                    .getOrDefault(false)
+            } ?: false
+            url to isOnline
+        }
+
+        val online = entries.count { it.second }
+
+        // How many reports URLhaus holds in total, which may exceed what it returned.
+        val reportedTotal = runCatching {
+            root["url_count"]!!.jsonPrimitive.contentOrNull?.trim()?.toInt()
+        }.getOrNull()
+        val truncated = reportedTotal != null && reportedTotal > total
+
+        val wanted = observedUrls.mapNotNull(::matchKey).toSet()
+        val matched = if (wanted.isEmpty()) {
+            emptyList()
+        } else {
+            entries.filter { (url, _) -> url != null && matchKey(url) in wanted }
+        }
+        val matchedOnline = matched.count { it.second }
+
+        val counts = buildMap {
+            put("listed_urls", total.toString())
+            put("online_urls", online.toString())
+            if (reportedTotal != null) put("host_total_urls", reportedTotal.toString())
+        }
+
+        fun evidence(
+            verdict: ReputationVerdict,
+            scope: String,
+            listing: String,
+            summary: String,
+        ) = ExternalEvidence(
             sourceName = sourceName,
-            verdict = ReputationVerdict.CONFIRMED,
+            verdict = verdict,
             subject = host,
-            summary = if (online > 0) {
-                "URLhaus lists $total malicious URL(s) on $host, $online currently online"
-            } else {
-                "URLhaus lists $total known malicious URL(s) on $host"
-            },
-            details = mapOf(
-                "listed_urls" to total.toString(),
-                "online_urls" to online.toString(),
-            ),
+            summary = summary,
+            details = counts + mapOf("scope" to scope, "listing" to listing),
         )
+
+        return when {
+            // 1. The link itself is listed and is being served right now.
+            matchedOnline > 0 -> evidence(
+                ReputationVerdict.CONFIRMED,
+                scope = "url",
+                listing = "active",
+                summary = "URLhaus reports this exact URL as malicious and currently online",
+            )
+
+            // 2. The link itself is listed, but is not currently serving.
+            matched.isNotEmpty() -> evidence(
+                ReputationVerdict.SUSPICIOUS,
+                scope = "url",
+                listing = "historical",
+                summary = "URLhaus reports this exact URL as malicious, though it is not " +
+                    "currently online — a past-abuse record, not a clean one",
+            )
+
+            // 3. No URL to check: the host itself was the question. Phase 14A grading.
+            wanted.isEmpty() && online > 0 -> evidence(
+                ReputationVerdict.CONFIRMED,
+                scope = "host",
+                listing = "active",
+                summary = "URLhaus lists $total malicious URL(s) on $host, " +
+                    "$online currently online",
+            )
+
+            wanted.isEmpty() -> evidence(
+                ReputationVerdict.SUSPICIOUS,
+                scope = "host",
+                listing = "historical",
+                summary = "URLhaus lists $total malicious URL(s) previously hosted on $host, " +
+                    "none currently online — a past-abuse record, not a clean one",
+            )
+
+            // 4. The host is listed; this particular link is not among the entries returned.
+            //    Report what is true — about the host — and say so in those words.
+            else -> evidence(
+                ReputationVerdict.SUSPICIOUS,
+                scope = "host",
+                listing = if (online > 0) "active" else "historical",
+                summary = buildString {
+                    append("URLhaus reports malicious URLs hosted on $host")
+                    if (online > 0) append(", $online currently online")
+                    append(", but this link is not among them — ")
+                    append("this is a report about the host, not about this URL")
+                    if (truncated) {
+                        append(" (only $total of $reportedTotal reports were returned, ")
+                        append("so this is not proof the link is unlisted)")
+                    }
+                },
+            )
+        }
+    }
+
+    /**
+     * A comparison key for one URL: authority plus path and query, with the scheme, any
+     * credentials, the fragment and a trailing slash discarded.
+     *
+     * The scheme is deliberately ignored so a report of `http://host/payload` matches a user
+     * checking `https://host/payload` — the same resource, and erring towards a match errs
+     * towards the stronger verdict. Path and query keep their case, because they are
+     * case-sensitive and two paths differing only in case are two different resources.
+     *
+     * String parsing rather than `java.net.URI`, which throws on exactly the malformed input
+     * this adapter has to survive.
+     */
+    private fun matchKey(url: String?): String? {
+        val trimmed = url?.trim().orEmpty()
+        if (trimmed.isEmpty()) return null
+
+        val afterScheme = trimmed.substringAfter("://", missingDelimiterValue = trimmed)
+        val withoutFragment = afterScheme.substringBefore('#')
+        if (withoutFragment.isEmpty()) return null
+
+        val slash = withoutFragment.indexOf('/')
+        val authority = if (slash < 0) withoutFragment else withoutFragment.substring(0, slash)
+        val rest = if (slash < 0) "" else withoutFragment.substring(slash)
+
+        // Credentials before an `@` identify a user, not the resource.
+        val hostAndPort = authority.substringAfterLast('@')
+        if (hostAndPort.isEmpty()) return null
+
+        return hostAndPort.lowercase() + rest.trimEnd('/')
     }
 
     private fun unknown(subject: String, summary: String) = ExternalEvidence(
