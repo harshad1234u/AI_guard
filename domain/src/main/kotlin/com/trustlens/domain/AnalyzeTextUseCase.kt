@@ -37,6 +37,21 @@ class AnalyzeTextUseCase @Inject constructor(
     suspend operator fun invoke(
         text: String,
         source: InvestigationSource = InvestigationSource.TEXT,
+        /**
+         * Additional hostnames to ask reputation providers about, beyond those found in the
+         * content itself.
+         *
+         * This exists for one case the extractor deliberately cannot cover: an email's
+         * *sender domain*. `URL_BARE_DOMAIN` refuses to match a domain preceded by `@`, so
+         * the host in `alerts@fake-sbi.com` is never extracted as a link — correctly, since
+         * it is not one. For an email that host is the single most useful thing to check, so
+         * the caller supplies it explicitly.
+         *
+         * Defaults to empty, so every existing surface behaves exactly as before. Whatever is
+         * passed here is a hostname and nothing else — the same payload rule the rest of the
+         * pipeline follows.
+         */
+        extraLookupSubjects: List<String> = emptyList(),
     ): AnalysisResult {
         val indicators = extractor.extract(text)
 
@@ -46,12 +61,28 @@ class AnalyzeTextUseCase @Inject constructor(
             claimedOrganisations = indicators.organisations,
         )
 
-        // Nothing to classify in empty input, and running a model on it would only invent a
-        // probability for content that does not exist.
-        val classification = if (text.isBlank()) {
-            ClassificationResult.Unavailable("No content to analyse")
-        } else {
-            classifier.classify(text)
+        /*
+         * Two inputs the classifier is not asked about, for the same reason: there is no
+         * message wording for it to read, so any probability it returned would be an artefact
+         * of the model's priors rather than a measurement of this content.
+         *
+         * The second case is the one [AnalyzeUrlUseCase] has always handled correctly and
+         * this path did not. Measured on the shipped model, `https://www.sbi.co.in` — the
+         * genuine State Bank of India domain — scores p=0.8888 and contributes +26, while
+         * `sbi.bank.tk/verify` scores p=0.1729 and contributes +5. The model ranks the real
+         * bank as five times more scam-like than the phish impersonating it, because a bare
+         * hostname is far outside the distribution of the SMS corpus it was trained on.
+         *
+         * A link with no message around it is therefore assessed the way the Check URL screen
+         * already assesses one: deterministic structure, plus external reputation, scored by
+         * the risk engine. Nothing is removed — URL analysis and threat intelligence both
+         * still run below, and the reason is reported so the UI can say the model did not run
+         * rather than implying it ran and found nothing.
+         */
+        val classification = when {
+            text.isBlank() -> ClassificationResult.Unavailable("No content to analyse")
+            isLinkOnly(text, indicators) -> ClassificationResult.Unavailable(LINK_ONLY_REASON)
+            else -> classifier.classify(text)
         }
 
         val signal = (classification as? ClassificationResult.Success)?.signal
@@ -61,8 +92,10 @@ class AnalyzeTextUseCase @Inject constructor(
         // The URLs go along as *local* context only: a provider that enumerates offending
         // URLs can then tell "this link is listed" from "something on this host is listed".
         // Nothing extra is transmitted — see ReputationSource.lookup.
-        val report = threatIntel?.investigate(lookupSubjects(indicators), indicators.urls)
-            ?: ThreatIntelReport.NotConsulted
+        val report = threatIntel?.investigate(
+            lookupSubjects(indicators, extraLookupSubjects),
+            indicators.urls,
+        ) ?: ThreatIntelReport.NotConsulted
 
         val context = InvestigationContext(
             source = source,
@@ -103,12 +136,57 @@ class AnalyzeTextUseCase @Inject constructor(
      * Everything is folded to one entry per distinct host, so a message repeating a link
      * five times still costs one lookup per provider.
      */
-    private fun lookupSubjects(indicators: Indicators): List<String> =
-        (indicators.urls.mapNotNull { hostOf(it) } + indicators.domains)
+    private fun lookupSubjects(
+        indicators: Indicators,
+        extra: List<String>,
+    ): List<String> =
+        (indicators.urls.mapNotNull { hostOf(it) } + indicators.domains + extra)
             .map { it.trim().lowercase() }
             .filter { it.isNotEmpty() }
             .distinct()
 
     private fun hostOf(url: String): String? =
         urlAnalyzer.analyse(url).takeIf { it.isParseable }?.host
+
+    /**
+     * True when the input is a link and nothing else.
+     *
+     * Decided from the extractor's own URL spans rather than by pattern-matching the text a
+     * second time. That matters for two reasons: the extractor is the component that defines
+     * what TrustLens considers a link — scheme-qualified, `www.`-prefixed, or a bare host on a
+     * known TLD — so this can never disagree with it, and a `contains("http")` test would miss
+     * `example.com/login` while wrongly firing on a sentence that merely mentions a link.
+     *
+     * The spans are cut out of the text and whatever is left is inspected. If a single letter
+     * or digit survives, there is message wording here and the classifier is the right tool
+     * for it. Only punctuation and whitespace surviving means the user pasted a link.
+     *
+     * Deliberately strict in the direction of *running* the model: "Verify now:
+     * https://sbi.bank.tk/verify" keeps its ML signal, because "Verify now" is exactly the
+     * kind of wording the classifier was trained to read.
+     */
+    private fun isLinkOnly(text: String, indicators: Indicators): Boolean {
+        val links = indicators.matches.filter { it.kind == IndicatorKind.URL }
+        if (links.isEmpty()) return false
+
+        val remainder = StringBuilder(text)
+        // Right to left, so removing one span cannot shift the offsets of the next.
+        links.sortedByDescending { it.startIndex }.forEach { link ->
+            val start = link.startIndex.coerceIn(0, remainder.length)
+            val end = link.endIndex.coerceIn(start, remainder.length)
+            remainder.delete(start, end)
+        }
+
+        return remainder.none { it.isLetterOrDigit() }
+    }
+
+    private companion object {
+        /**
+         * Stated plainly, because a classifier that did not run must never be mistaken for a
+         * classifier that ran and found nothing.
+         */
+        const val LINK_ONLY_REASON =
+            "This is a link with no message around it. The classifier reads message wording, " +
+                "so it was not run — the link was analysed structurally instead."
+    }
 }

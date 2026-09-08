@@ -125,6 +125,138 @@ class UrlFlowIntegrationTest {
         assertThat(SafeAction.entries.map { it.name }).containsNoneOf("OPEN_URL", "VISIT_LINK")
     }
 
+    // --- Local structural detection without threat intelligence -------------------------
+    //
+    // The point of these: a brand-new phishing domain has no reputation history, so if
+    // TrustLens can only recognise it once a provider has heard of it, it cannot protect
+    // anyone from a fresh campaign. Threat intelligence corroborates; it is not a
+    // prerequisite. Bands and orderings only — the weights stay the engine's business.
+
+    @Test
+    fun `a brand impersonation on a free tld is guarded without any threat intelligence`() =
+        runTest {
+            val result = urlUseCase()("https://sbi.bank.tk/verify")
+
+            assertThat(result.externalEvidence).isEmpty()
+            assertThat(result.risk.level).isAtLeast(RiskLevel.GUARDED)
+            assertThat(result.observations.map { it.kind }).containsAtLeast(
+                ObservationKind.DOMAIN_ORGANISATION_MISMATCH,
+                ObservationKind.SUSPICIOUS_URL,
+            )
+            assertThat(result.risk.recommendedActions).contains(SafeAction.DO_NOT_OPEN_LINK)
+        }
+
+    @Test
+    fun `the impersonating link outranks the organisation's real domain`() = runTest {
+        val impersonation = urlUseCase()("https://sbi.bank.tk/verify")
+        val official = urlUseCase()("https://www.sbi.co.in/login")
+
+        assertThat(impersonation.risk.score).isGreaterThan(official.risk.score)
+        assertThat(official.risk.level).isEqualTo(RiskLevel.LOW)
+    }
+
+    @Test
+    fun `legitimate domains gain no structural signal`() = runTest {
+        listOf(
+            "https://www.sbi.co.in/login",
+            "https://onlinesbi.sbi",
+            "https://www.icicibank.com",
+            "https://example.com/about",
+            "https://some-small-blog.in/post/1",
+            "https://github.com",
+        ).forEach { url ->
+            val result = urlUseCase()(url)
+
+            assertThat(result.observations).isEmpty()
+            assertThat(result.risk.score).isEqualTo(0)
+            assertThat(result.risk.level).isEqualTo(RiskLevel.LOW)
+        }
+    }
+
+    @Test
+    fun `a bare pasted link reaches the same analysis as a scheme qualified one`() = runTest {
+        val bare = textUseCase()("Dear customer, verify at sbi.bank.tk/verify today")
+        val qualified =
+            textUseCase()("Dear customer, verify at https://sbi.bank.tk/verify today")
+
+        listOf(bare, qualified).forEach { result ->
+            assertThat(result.context.indicators.domains).contains("sbi.bank.tk")
+            assertThat(result.observations.map { it.kind }).containsAtLeast(
+                ObservationKind.DOMAIN_ORGANISATION_MISMATCH,
+                ObservationKind.SUSPICIOUS_URL,
+            )
+        }
+    }
+
+    // --- A pasted link is not put to the SMS classifier ---------------------------------
+    //
+    // Over the real extractor and analyser, so these prove the guard agrees with what
+    // TrustLens actually considers a link rather than with a second opinion about it.
+
+    @Test
+    fun `pasting a link into the message screen does not invoke the classifier`() = runTest {
+        listOf(
+            "https://www.sbi.co.in",
+            "http://example.com",
+            "sbi.bank.tk/verify",
+            "example.com/login",
+            "www.example.com",
+        ).forEach { url ->
+            val result = textUseCase()(url)
+
+            assertThat(result.context.mlSignal).isNull()
+            assertThat(result.classifierBackend).isNull()
+            assertThat(result.classifierUnavailableReason).isNotNull()
+        }
+    }
+
+    @Test
+    fun `the official bank domain no longer collects a classifier contribution`() = runTest {
+        // The regression this guard exists for: the genuine SBI domain used to score p=0.8888
+        // on a corpus of UK SMS and contribute +26, out-scoring the phish impersonating it.
+        val result = textUseCase()("https://www.sbi.co.in")
+
+        assertThat(result.context.mlSignal).isNull()
+        assertThat(result.risk.level).isEqualTo(RiskLevel.LOW)
+        assertThat(result.observations).isEmpty()
+    }
+
+    @Test
+    fun `a pasted phishing link keeps its deterministic signals without the classifier`() =
+        runTest {
+            val result = textUseCase()("sbi.bank.tk/verify")
+
+            assertThat(result.context.mlSignal).isNull()
+            assertThat(result.observations.map { it.kind }).containsExactly(
+                ObservationKind.SUSPICIOUS_URL,
+                ObservationKind.DOMAIN_ORGANISATION_MISMATCH,
+            )
+            assertThat(result.risk.level).isEqualTo(RiskLevel.GUARDED)
+        }
+
+    @Test
+    fun `the impersonating link outscores the real one on the message screen too`() = runTest {
+        val phish = textUseCase()("sbi.bank.tk/verify")
+        val official = textUseCase()("https://www.sbi.co.in")
+
+        // Before the guard this ordering was inverted: 5 against 26.
+        assertThat(phish.risk.score).isGreaterThan(official.risk.score)
+    }
+
+    @Test
+    fun `a message wrapped around a link still reaches the classifier`() = runTest {
+        listOf(
+            "URGENT verify:\nhttps://sbi.bank.tk/verify",
+            "Your SBI account is blocked.\nhttps://sbi.bank.tk/verify\nSend OTP.",
+        ).forEach { text ->
+            val result = textUseCase()(text)
+
+            assertThat(result.context.mlSignal).isNotNull()
+            assertThat(result.observations.map { it.kind })
+                .contains(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+        }
+    }
+
     // --- URL analysis now feeds the text flow -------------------------------------------
 
     @Test

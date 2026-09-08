@@ -274,9 +274,16 @@ class RuleBasedIndicatorExtractor : IndicatorExtractor {
 
         // Restricting bare-domain matching to a known TLD list is what stops ordinary prose
         // ("blocked. Do not delay", "Rs.500") from being read as a link.
+        // The five free-registration TLDs are listed for the opposite reason to the rest:
+        // not because links there are common, but because they are disproportionately
+        // hostile. Omitting them meant a bare `sbi.bank.tk/verify` was not recognised as a
+        // link at all, so it reached no URL analysis and no reputation lookup — while the
+        // same string inside a QR code did, because DeterministicQrPayloadClassifier already
+        // knew `tk`. The two surfaces now agree.
         const val TLDS =
             "com|org|net|in|io|co|me|app|xyz|top|info|biz|ru|cn|site|online|link|click|" +
-                "live|shop|store|icu|vip|work|help|fit|pro|dev|tech|space|website"
+                "live|shop|store|icu|vip|work|help|fit|pro|dev|tech|space|website|" +
+                "tk|ml|ga|cf|gq"
 
         val URL_WITH_SCHEME = Regex("""\bhttps?://[^\s<>"']+""", RegexOption.IGNORE_CASE)
 

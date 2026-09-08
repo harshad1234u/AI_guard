@@ -26,6 +26,8 @@ android {
 
 dependencies {
     implementation(project(":domain"))
+    // The TrustLens design system: tokens, cards, risk and investigation components.
+    implementation(project(":core"))
     // Shared verdict presentation, so every input flow renders a result identically.
     implementation(project(":feature:result"))
 

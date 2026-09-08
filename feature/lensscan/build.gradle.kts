@@ -27,6 +27,8 @@ android {
 
 dependencies {
     implementation(project(":domain"))
+    // The TrustLens design system: tokens, cards, risk and investigation components.
+    implementation(project(":core"))
     // For the ImageTextRecogniser contract; the ML Kit implementation is bound in :app.
     implementation(project(":ai"))
     implementation(project(":feature:result"))

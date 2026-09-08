@@ -100,7 +100,23 @@ class DeterministicUrlAnalyzer @Inject constructor() : UrlAnalyzer {
             structuralObservations(analysis).forEach { observations.putIfAbsent(it.kind, it) }
         }
 
+        /*
+         * Order matters, and only for wording. All three of the calls below can produce a
+         * DOMAIN_ORGANISATION_MISMATCH, and `putIfAbsent` keeps the first. The message-context
+         * mismatch is the most informative — it can name the organisation the *message*
+         * claimed to be — so it is offered before the URL-only brand check, which knows
+         * nothing beyond the link itself. The risk engine deduplicates by kind regardless, so
+         * this changes which sentence the user reads and never the score.
+         */
         mismatchObservation(analyses, claimedOrganisations)?.let {
+            observations.putIfAbsent(it.kind, it)
+        }
+
+        brandImpersonationObservation(analyses)?.let {
+            observations.putIfAbsent(it.kind, it)
+        }
+
+        freeRegistrationTldObservation(analyses)?.let {
             observations.putIfAbsent(it.kind, it)
         }
 
@@ -214,6 +230,95 @@ class DeterministicUrlAnalyzer @Inject constructor() : UrlAnalyzer {
             )
         }
         return null
+    }
+
+    /**
+     * Brand impersonation detectable from the link alone.
+     *
+     * [mismatchObservation] above can only speak when the surrounding *message* named an
+     * organisation. A link checked on its own — pasted into Check URL, or read out of a QR
+     * code — carries no such claim, so until now `https://sbi.bank.tk/verify` produced no
+     * local signal whatsoever and was indistinguishable from a benign unknown domain.
+     *
+     * The condition here is deliberately narrow, and it is *not* "the address mentions a
+     * bank":
+     *
+     *   a recognised brand token appears as a whole label of the hostname
+     *   AND the **registrable domain** is not one of that organisation's official domains.
+     *
+     * Comparing against the registrable domain rather than the hostname is the entire point.
+     * `www.sbi.co.in` and `retail.onlinesbi.sbi` resolve to official domains and are silent;
+     * `sbi.bank.tk` resolves to `bank.tk`, which belongs to whoever registered it, and the
+     * `sbi` in front of it is decoration the attacker chose.
+     *
+     * Reuses [ObservationKind.DOMAIN_ORGANISATION_MISMATCH] — the same fact, learned a second
+     * way — so no new observation kind and no new weight enters the scoring table.
+     */
+    private fun brandImpersonationObservation(analyses: List<UrlAnalysis>): Observation? {
+        analyses.forEach { analysis ->
+            val host = analysis.host ?: return@forEach
+            val domain = analysis.registrableDomain ?: return@forEach
+            if (UrlFinding.IP_LITERAL_HOST in analysis.findings) return@forEach
+
+            /*
+             * Whole labels, plus the hyphen-delimited components of each label. Never
+             * substrings: `sbicards.com` is a real SBI product and `basbi.com` is somebody
+             * else entirely, and a `contains("sbi")` rule would call both of them phishing.
+             * `sbi-login.example.com` splits to `sbi` and does match, which is the shape the
+             * attack actually takes.
+             */
+            val components = host.split('.')
+                .flatMap { label -> label.split('-') + label }
+                .toSet()
+
+            BRAND_TOKENS.forEach { (organisation, tokens) ->
+                val matched = tokens.firstOrNull { it in components } ?: return@forEach
+
+                val official = OFFICIAL_DOMAINS[organisation].orEmpty()
+                if (official.any { domain == it || domain.endsWith(".$it") }) return@forEach
+
+                return Observation(
+                    kind = ObservationKind.DOMAIN_ORGANISATION_MISMATCH,
+                    summary = "Link address contains \"$matched\", but the site it actually " +
+                        "goes to is $domain, which is not a $organisation domain",
+                    detail = analysis.original,
+                )
+            }
+        }
+        return null
+    }
+
+    /**
+     * A registrable domain on a free-registration TLD.
+     *
+     * These five were handed out at no cost and with no verification, and were abused at a
+     * rate that made them a standing phishing indicator rather than a curiosity. The list is
+     * kept to exactly those five on purpose: `.xyz`, `.top` and `.online` cost money, carry
+     * substantial legitimate use, and would turn this into noise.
+     *
+     * Reuses [ObservationKind.SUSPICIOUS_URL] — the "structural oddity with no more specific
+     * kind of its own" slot, which already carries a weight and already counts as a link
+     * concern. No new weight is introduced.
+     *
+     * This is a weak signal on its own and is weighted as one. It earns its place by
+     * combining: a free TLD *and* a brand token in front of it is the standard shape of a
+     * throwaway phishing host.
+     */
+    private fun freeRegistrationTldObservation(analyses: List<UrlAnalysis>): Observation? {
+        val offending = analyses.firstOrNull { analysis ->
+            if (UrlFinding.IP_LITERAL_HOST in analysis.findings) return@firstOrNull false
+            val domain = analysis.registrableDomain ?: return@firstOrNull false
+            domain.substringAfterLast('.') in FREE_REGISTRATION_TLDS
+        } ?: return null
+
+        val tld = offending.registrableDomain.orEmpty().substringAfterLast('.')
+
+        return Observation(
+            kind = ObservationKind.SUSPICIOUS_URL,
+            summary = "Link uses a .$tld address, a free-registration domain of the kind " +
+                "used for throwaway phishing sites",
+            detail = offending.original,
+        )
     }
 
     // --- Parsing helpers --------------------------------------------------------------
@@ -340,6 +445,22 @@ class DeterministicUrlAnalyzer @Inject constructor() : UrlAnalyzer {
             UrlFinding.NON_STANDARD_PORT,
         )
 
+        const val MIN_BRAND_TOKEN_LENGTH = 3
+
+        /**
+         * Free-registration TLDs, kept to exactly the five that were given away at no cost
+         * and with no verification. Widening this list is how a signal becomes noise.
+         */
+        val FREE_REGISTRATION_TLDS = setOf("tk", "ml", "ga", "cf", "gq")
+
+        /**
+         * Words that name what an organisation *does*, not which organisation it is. They
+         * appear in official domains (`bank.sbi`, `pay.google.com`) and in every second
+         * hostname on the internet, so they can never identify a brand.
+         */
+        val GENERIC_TOKENS =
+            setOf("bank", "pay", "card", "login", "secure", "verify", "account")
+
         val MULTI_PART_SUFFIXES = setOf(
             "co.in", "net.in", "org.in", "gov.in", "ac.in", "edu.in", "firm.in", "res.in",
             "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk",
@@ -389,5 +510,31 @@ class DeterministicUrlAnalyzer @Inject constructor() : UrlAnalyzer {
             "FedEx" to setOf("fedex.com"),
             "Netflix" to setOf("netflix.com"),
         )
+
+        /**
+         * The distinctive token for each organisation, **derived from [OFFICIAL_DOMAINS]**
+         * rather than written out by hand.
+         *
+         * Derivation is what keeps this safe. Taking the leading label of a domain the
+         * organisation actually owns yields `sbi`, `onlinesbi`, `yesbank`, `indiapost`,
+         * `icicibank` — every one of them a name somebody registered. Deriving from the
+         * *display names* instead would have produced `yes` from "Yes Bank", `india` and
+         * `post` from "India Post" and `union` from "Union Bank", and any hostname carrying
+         * one of those ordinary words would have been called impersonation.
+         *
+         * [GENERIC_TOKENS] then drops the few service words that survive — `bank` from
+         * `bank.sbi`, `pay` from `pay.google.com` — and [MIN_BRAND_TOKEN_LENGTH] drops
+         * anything too short to be distinctive. The two tables cannot drift apart, because
+         * one is computed from the other.
+         */
+        val BRAND_TOKENS: Map<String, Set<String>> = OFFICIAL_DOMAINS
+            .mapValues { (_, domains) ->
+                domains.mapNotNullTo(mutableSetOf()) { domain ->
+                    domain.substringBefore('.').takeIf {
+                        it.length >= MIN_BRAND_TOKEN_LENGTH && it !in GENERIC_TOKENS
+                    }
+                }
+            }
+            .filterValues { it.isNotEmpty() }
     }
 }

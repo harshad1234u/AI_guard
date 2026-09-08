@@ -185,6 +185,148 @@ class AnalyzeTextUseCaseTest {
             assertThat(result.context.rawContent).isEqualTo(text)
         }
 
+    // --- Link-only input is not put to the classifier -----------------------------------
+    //
+    // The classifier reads message wording. A bare hostname is outside the distribution it
+    // was trained on, and measured on the shipped model the genuine `https://www.sbi.co.in`
+    // scores higher (p=0.8888) than the phish impersonating it (p=0.1729). So a link with no
+    // message around it is assessed structurally, exactly as the Check URL screen does.
+
+    private class RecordingSource : ReputationSource {
+        override val sourceName = "Recorder"
+        val subjects = mutableListOf<String>()
+
+        override suspend fun lookup(subject: String): ExternalEvidence {
+            subjects += subject
+            return ExternalEvidence(
+                sourceName = sourceName,
+                verdict = ReputationVerdict.NO_DETECTION,
+                subject = subject,
+                summary = "no report",
+            )
+        }
+    }
+
+    /** Indicators as the real extractor would report them for a link-only input. */
+    private fun linkOnly(url: String, at: Int = 0) = Indicators(
+        urls = listOf(url),
+        matches = listOf(IndicatorMatch(IndicatorKind.URL, url, at, at + url.length)),
+    )
+
+    private fun useCaseFor(indicators: Indicators, classifier: FakeClassifier) =
+        AnalyzeTextUseCase(
+            extractor = FakeExtractor(indicators),
+            urlAnalyzer = FakeUrlAnalyzer(),
+            classifier = classifier,
+            riskAssessor = assessorReturning(0),
+        )
+
+    @Test
+    fun `the classifier is not invoked for link-only input in any supported form`() = runTest {
+        listOf(
+            "https://www.sbi.co.in",
+            "http://example.com",
+            "sbi.bank.tk/verify",
+            "example.com/login",
+            "www.example.com",
+        ).forEach { url ->
+            val classifier = FakeClassifier(
+                result = ClassificationResult.Success(signal(0.88)),
+            )
+
+            val result = useCaseFor(linkOnly(url), classifier)(url)
+
+            assertThat(classifier.lastText).isNull()
+            assertThat(result.context.mlSignal).isNull()
+            assertThat(result.classifierBackend).isNull()
+        }
+    }
+
+    @Test
+    fun `no probability is manufactured for link-only input`() = runTest {
+        val classifier = FakeClassifier(result = ClassificationResult.Success(signal(0.88)))
+
+        val result = useCaseFor(linkOnly("https://www.sbi.co.in"), classifier)(
+            "https://www.sbi.co.in",
+        )
+
+        // Absent, not zero: a fabricated 0.0 would be a claim the model never made.
+        assertThat(result.context.mlSignal).isNull()
+        assertThat(result.classifierUnavailableReason).isNotNull()
+        assertThat(result.classifierUnavailableReason).contains("was not run")
+    }
+
+    @Test
+    fun `link-only input still gets url analysis and a threat-intel lookup`() = runTest {
+        val urlAnalyzer = FakeUrlAnalyzer(
+            observations = listOf(Observation(ObservationKind.SUSPICIOUS_URL, "structural")),
+        )
+        val source = RecordingSource()
+        val assessor = assessorReturning(22)
+        val useCase = AnalyzeTextUseCase(
+            extractor = FakeExtractor(
+                linkOnly("sbi.bank.tk/verify").copy(domains = listOf("sbi.bank.tk")),
+            ),
+            urlAnalyzer = urlAnalyzer,
+            classifier = FakeClassifier(),
+            riskAssessor = assessor,
+            threatIntel = InvestigateIndicatorsUseCase(setOf(source)),
+        )
+
+        useCase("sbi.bank.tk/verify")
+
+        // Skipping the classifier removes nothing else: the link is still inspected, the
+        // host is still asked about, and both reach the engine.
+        assertThat(urlAnalyzer.lastUrls).containsExactly("sbi.bank.tk/verify")
+        assertThat(source.subjects).contains("sbi.bank.tk")
+        assertThat(assessor.lastContext?.observations?.map { it.kind })
+            .contains(ObservationKind.SUSPICIOUS_URL)
+        assertThat(assessor.lastContext?.externalEvidence).isNotEmpty()
+        assertThat(assessor.lastContext?.mlSignal).isNull()
+    }
+
+    @Test
+    fun `a message wrapped around a link still reaches the classifier`() = runTest {
+        val cases = listOf(
+            "URGENT verify:\nhttps://sbi.bank.tk/verify",
+            "Your SBI account is blocked.\nhttps://sbi.bank.tk/verify\nSend OTP.",
+        )
+
+        cases.forEach { text ->
+            val url = "https://sbi.bank.tk/verify"
+            val classifier = FakeClassifier(
+                result = ClassificationResult.Success(signal(0.6)),
+            )
+
+            val result = useCaseFor(linkOnly(url, at = text.indexOf(url)), classifier)(text)
+
+            assertThat(classifier.lastText).isEqualTo(text)
+            assertThat(result.context.mlSignal).isNotNull()
+        }
+    }
+
+    @Test
+    fun `trailing punctuation around a link does not make it a message`() = runTest {
+        val url = "https://example.com"
+        val text = "$url."
+        val classifier = FakeClassifier(result = ClassificationResult.Success(signal(0.6)))
+
+        val result = useCaseFor(linkOnly(url), classifier)(text)
+
+        assertThat(classifier.lastText).isNull()
+        assertThat(result.context.mlSignal).isNull()
+    }
+
+    @Test
+    fun `ordinary messages with no link are unaffected`() = runTest {
+        val classifier = FakeClassifier(result = ClassificationResult.Success(signal(0.4)))
+
+        val result = useCaseFor(Indicators(urgency = true), classifier)("Call me back please")
+
+        assertThat(classifier.lastText).isEqualTo("Call me back please")
+        assertThat(result.context.mlSignal).isNotNull()
+    }
+
     // --- Classifier unavailable --------------------------------------------------------
 
     @Test

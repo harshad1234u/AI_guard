@@ -24,6 +24,8 @@ android {
 
 dependencies {
     implementation(project(":domain"))
+    // The TrustLens design system: tokens, cards, risk and investigation components.
+    implementation(project(":core"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

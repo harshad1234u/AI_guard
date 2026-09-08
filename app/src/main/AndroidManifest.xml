@@ -38,14 +38,66 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.TrustLens">
 
+        <!--
+          Theme.TrustLens.Splash is the startup screen. MainActivity swaps back to
+          Theme.TrustLens in onCreate, so the mark is shown only while the process is
+          genuinely starting - there is no timer and nothing to wait on.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.TrustLens">
+            android:theme="@style/Theme.TrustLens.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              Check Email. A mail app hands TrustLens the one message the user chose to
+              share; there is no mailbox access, no account and no OAuth. This receives
+              content - it does not let TrustLens send, open or launch anything, so
+              Principle 3 is unaffected.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+        </activity>
+
+        <!--
+          Check selected text. Puts TrustLens in Android's text-selection toolbar, so a
+          suspicious line can be checked from inside Gmail, Chrome, Messages or any app that
+          offers text processing, without leaving that app.
+
+          This is the alternative to mailbox access, and it is the reason TrustLens needs no
+          Gmail API, no OAuth and no account: the user highlights the text, and TrustLens
+          receives those characters and nothing else. Like the share filter above it only
+          receives content - it grants TrustLens no ability to send, open or launch anything,
+          and the selection is never written back to the source app.
+
+          A dedicated activity rather than a second filter on MainActivity: declared on the
+          launcher activity the filter registered correctly on the POCO X6 but never appeared
+          in any app's selection menu, and all eight other handlers on that device use a
+          dedicated activity. See ProcessTextActivity.
+
+          excludeFromRecents + its own taskAffinity keep this out of the user's recents and
+          out of TrustLens's main task, so checking a selection never disturbs whatever the
+          user had open in the app itself.
+        -->
+        <activity
+            android:name=".ProcessTextActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/process_text_label"
+            android:taskAffinity=".ProcessTextActivity"
+            android:theme="@style/Theme.TrustLens">
+            <intent-filter android:label="@string/process_text_label">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
     </application>

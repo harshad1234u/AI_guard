@@ -67,6 +67,30 @@ class RuleBasedIndicatorExtractorTest {
     }
 
     @Test
+    fun `extracts a bare domain on a free registration tld`() {
+        // Omitting these meant a pasted `sbi.bank.tk/verify` was not recognised as a link at
+        // all, so it reached neither URL analysis nor a reputation lookup — while the same
+        // string inside a QR code did.
+        val result = extractor.extract("Dear customer, verify at sbi.bank.tk/verify today")
+
+        assertThat(result.urls).contains("sbi.bank.tk/verify")
+        assertThat(result.domains).contains("sbi.bank.tk")
+    }
+
+    @Test
+    fun `extracts every free registration tld as a bare domain`() {
+        listOf(
+            "freerecharge.ml/offer",
+            "claim.tk/now",
+            "offer.ga/x",
+            "promo.cf/y",
+            "deal.gq/z",
+        ).forEach { link ->
+            assertThat(extractor.extract("Open $link now").urls).contains(link)
+        }
+    }
+
+    @Test
     fun `strips trailing sentence punctuation from a url`() {
         val result = extractor.extract("Open https://example.com/verify.")
 

@@ -71,6 +71,7 @@ dependencies {
     implementation(project(":domain"))
     implementation(project(":riskengine"))
     implementation(project(":investigation"))
+    // The TrustLens design system, which owns the theme.
     implementation(project(":core"))
     implementation(project(":ai"))
     implementation(project(":threatintel"))
@@ -81,6 +82,7 @@ dependencies {
     implementation(project(":feature:urlcheck"))
     implementation(project(":feature:textcheck"))
     implementation(project(":feature:voicecheck"))
+    implementation(project(":feature:emailshare"))
     implementation(project(":feature:result"))
 
     implementation(libs.androidx.core)
@@ -96,6 +98,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     implementation(libs.hilt.android)
+    implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     ksp(libs.hilt.compiler)
 
     testImplementation(libs.junit)

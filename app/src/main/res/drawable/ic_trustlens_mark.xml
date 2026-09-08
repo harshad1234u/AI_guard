@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The TrustLens mark as a drawable, for the two places Compose cannot reach: the window
+  background at startup and the adaptive launcher icon. Its Compose twin is `TrustLensMark`
+  in :core, and the two are drawn from the same geometry.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108"
+    android:tint="#FFFFFF">
+
+    <!-- Shield: flat shoulders tapering to a rounded point. -->
+    <path
+        android:pathData="M54,8 L92.9,23.1 L92.9,55.4 C92.9,81.3 75.6,94.3 54,101.9 C32.4,94.3 15.1,81.3 15.1,55.4 L15.1,23.8 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="9.2"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round" />
+
+    <!-- The lens: a ring set slightly high, with a short handle. -->
+    <path
+        android:pathData="M49.7,48.6 m-16.7,0 a16.7,16.7 0 1,0 33.5,0 a16.7,16.7 0 1,0 -33.5,0"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="9.2" />
+    <path
+        android:pathData="M62,60.6 L75,73.6"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="9.2"
+        android:strokeLineCap="round" />
+</vector>

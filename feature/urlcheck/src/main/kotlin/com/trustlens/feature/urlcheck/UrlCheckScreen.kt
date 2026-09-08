@@ -2,35 +2,49 @@ package com.trustlens.feature.urlcheck
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.trustlens.core.design.BulletRow
+import com.trustlens.core.design.Corner
+import com.trustlens.core.design.FieldRow
+import com.trustlens.core.design.LoadingState
+import com.trustlens.core.design.NoticeCard
+import com.trustlens.core.design.PrimaryButton
+import com.trustlens.core.design.ScreenHeader
+import com.trustlens.core.design.SectionHeader
+import com.trustlens.core.design.Space
+import com.trustlens.core.design.TrustLens
+import com.trustlens.core.design.TrustLensCard
+import com.trustlens.core.design.UnknownState
 import com.trustlens.domain.UrlAnalysis
 import com.trustlens.domain.UrlFinding
 import com.trustlens.feature.result.RiskResultView
 
+/**
+ * Check URL.
+ *
+ * The screen's promise, and the reason it has no Open button anywhere on it: **the link is
+ * analysed without ever being opened.** Structure is parsed offline; reputation providers are
+ * asked about the hostname alone. A screen whose purpose is warning someone about a link must
+ * not also be the easiest way to visit it.
+ */
 @Composable
 fun UrlCheckScreen(
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
     viewModel: UrlCheckViewModel = hiltViewModel(),
 ) {
@@ -50,28 +64,31 @@ internal fun UrlCheckContent(
     state: UrlCheckUiState,
     onUrlChange: (String) -> Unit,
     onAnalyse: () -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = TrustLens.colors.screen,
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(start = Space.gutter, end = Space.gutter, top = Space.lg, bottom = Space.xxl),
+            verticalArrangement = Arrangement.spacedBy(Space.md),
         ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onBack) { Text("Back") }
-            }
+            ScreenHeader(
+                title = "Check a link",
+                onBack = onBack,
+                subtitle = "Link analysed without opening it.",
+            )
 
-            Text("Check a link", style = MaterialTheme.typography.headlineSmall)
-            Text(
-                text = "TrustLens inspects the link's structure on this device. " +
-                    "It never opens, visits or expands it.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            NoticeCard(
+                "TrustLens inspects the link's structure on this device. It never opens, " +
+                    "visits, expands or follows it. Reputation providers are asked about the " +
+                    "hostname only — never the path or the query.",
             )
 
             OutlinedTextField(
@@ -80,100 +97,83 @@ internal fun UrlCheckContent(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Paste link here") },
                 singleLine = false,
+                shape = Corner.inner,
+                textStyle = MaterialTheme.typography.bodyLarge,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = TrustLens.colors.surface,
+                    unfocusedContainerColor = TrustLens.colors.surface,
+                ),
             )
 
-            Button(
+            PrimaryButton(
+                text = if (state.isAnalysing) "Analysing…" else "Analyse link",
                 onClick = onAnalyse,
                 enabled = state.canAnalyse,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Analyse link")
-            }
+            )
 
             if (state.isUnparseable) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                ) {
-                    Text(
-                        text = "That text could not be read as a link.",
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
+                UnknownState(
+                    title = "That text could not be read as a link",
+                    body = "Nothing was analysed, so nothing here says anything about it " +
+                        "either way. Check the address and try again.",
+                )
             }
 
-            state.analysis?.takeIf { it.isParseable }?.let { UrlDetailCard(it) }
+            if (state.isAnalysing) {
+                LoadingState()
+            }
+
+            state.analysis?.takeIf { it.isParseable }?.let { UrlStructureSection(it) }
 
             state.result?.let { result ->
-                RiskResultView(result = result, modifier = Modifier.padding(top = 4.dp))
+                RiskResultView(result = result, modifier = Modifier.padding(top = Space.sm))
             }
         }
     }
 }
 
 /**
- * Structural detail for the inspected link.
+ * Structural detail for the inspected link, shown before the verdict.
  *
- * Everything here is rendered as plain text. There is deliberately no clickable affordance:
- * a screen whose purpose is warning the user about a link must not also be the easiest way to
- * open it.
+ * Everything here is rendered as plain text. There is deliberately no clickable affordance
+ * anywhere in this section — not on the link, not on the host, not on the domain.
  */
 @Composable
-private fun UrlDetailCard(analysis: UrlAnalysis) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = "Local link analysis",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "Structure examined on this device. Reputation providers are asked " +
-                    "about the hostname only — the link itself is never opened or visited.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+private fun UrlStructureSection(analysis: UrlAnalysis) {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+        SectionHeader("Structural analysis")
+        Text(
+            text = "Taken apart on this device. Not opened, not resolved, not fetched.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TrustLens.colors.textMuted,
+        )
 
-            DetailRow("Link", analysis.normalised)
-            analysis.host?.let { DetailRow("Host", it) }
-            analysis.registrableDomain?.let { DetailRow("Domain", it) }
-            analysis.scheme?.let { DetailRow("Scheme", it) }
-            analysis.port?.let { DetailRow("Port", it.toString()) }
+        TrustLensCard(modifier = Modifier.fillMaxWidth()) {
+            FieldRow("Link", analysis.normalised)
+            analysis.host?.let { FieldRow("Host", it) }
+            analysis.registrableDomain?.let { FieldRow("Domain", it) }
+            analysis.scheme?.let { FieldRow("Scheme", it) }
+            analysis.port?.let { FieldRow("Port", it.toString()) }
             if (analysis.subdomainLabels.isNotEmpty()) {
-                DetailRow("Subdomains", analysis.subdomainLabels.joinToString("."))
-            }
-
-            if (analysis.findings.isNotEmpty()) {
-                Text(
-                    text = "Detected",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-                analysis.findings.sortedBy { it.ordinal }.forEach {
-                    Text("• ${describe(it)}", style = MaterialTheme.typography.bodyMedium)
-                }
+                FieldRow("Subdomains", analysis.subdomainLabels.joinToString("."))
             }
         }
-    }
-}
 
-@Composable
-private fun DetailRow(label: String, value: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "$label:",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(value, style = MaterialTheme.typography.bodyMedium)
+        if (analysis.findings.isNotEmpty()) {
+            TrustLensCard(
+                modifier = Modifier.fillMaxWidth(),
+                background = TrustLens.colors.screen,
+                shape = Corner.inner,
+            ) {
+                Text(
+                    text = "DETECTED IN THE STRUCTURE",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = TrustLens.colors.textMuted,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+                analysis.findings.sortedBy { it.ordinal }.forEach { BulletRow(describe(it)) }
+            }
+        }
     }
 }
 

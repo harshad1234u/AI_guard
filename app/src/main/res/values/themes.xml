@@ -1,6 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Colours come from Compose (TrustLensTheme). This platform theme only supplies a
-         no-action-bar window so Compose owns the whole surface. -->
-    <style name="Theme.TrustLens" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+      Colours come from Compose (TrustLensTheme in :core). This platform theme supplies a
+      no-action-bar window so Compose owns the whole surface, and a window background that
+      matches the Compose screen colour so there is no white flash behind a transition.
+    -->
+    <style name="Theme.TrustLens" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/trustlens_screen</item>
+    </style>
+
+    <!--
+      The TrustLens startup screen, on API 26-30.
+
+      This is the window background: Android paints it from the moment the process starts
+      until the first Compose frame is ready, then MainActivity swaps the theme back. That is
+      the honest implementation of a splash — it appears instantly and disappears exactly when
+      initialisation is complete, because it *is* the window until then.
+
+      There is deliberately no progress indicator and no timer. TrustLens has nothing
+      asynchronous to wait on at launch: Hilt builds its graph lazily and the ONNX session
+      loads on first use, not at startup. A progress ring here would be decoration pretending
+      to be a measurement, and a timed hold would be the fake delay the brief rules out.
+    -->
+    <style name="Theme.TrustLens.Splash" parent="Theme.TrustLens">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
 </resources>

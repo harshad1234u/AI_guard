@@ -6,22 +6,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -30,11 +25,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.trustlens.core.design.Corner
+import com.trustlens.core.design.EmptyState
+import com.trustlens.core.design.ErrorState
+import com.trustlens.core.design.LoadingState
+import com.trustlens.core.design.NoticeCard
+import com.trustlens.core.design.PrimaryButton
+import com.trustlens.core.design.QuotedContent
+import com.trustlens.core.design.ScreenHeader
+import com.trustlens.core.design.SecondaryButton
+import com.trustlens.core.design.Space
+import com.trustlens.core.design.TrustLens
+import com.trustlens.core.design.UnknownState
 import com.trustlens.domain.TranscriptionBackend
 import com.trustlens.domain.VoiceCheckOutcome
 import com.trustlens.feature.result.RiskResultView
@@ -93,19 +100,23 @@ fun VoiceCheckScreen(
         if (hasPermission) listen() else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
-    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = TrustLens.colors.screen,
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(start = Space.gutter, end = Space.gutter, top = Space.lg, bottom = Space.xxl),
+            verticalArrangement = Arrangement.spacedBy(Space.md),
         ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onBack) { Text("Back") }
-            }
-            Text("Voice Check", style = MaterialTheme.typography.headlineSmall)
+            ScreenHeader(
+                title = "Voice Check",
+                onBack = onBack,
+                subtitle = "Say back what you heard, and have the words checked.",
+            )
 
             when (state.stage) {
                 VoiceStage.IDLE -> IdlePane(
@@ -120,7 +131,7 @@ fun VoiceCheckScreen(
                     onStop = { transcriber.stopListening() },
                 )
 
-                VoiceStage.WORKING -> WorkingPane()
+                VoiceStage.WORKING -> LoadingState()
 
                 VoiceStage.RESULT -> ResultPane(
                     outcome = state.outcome,
@@ -143,14 +154,14 @@ private fun IdlePane(
         text = "Heard something suspicious on a call? Say it back, and TrustLens will " +
             "analyse the words the same way it analyses a message.",
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = TrustLens.colors.textMuted,
     )
 
     // Disclosure happens *before* the microphone is ever used, not after.
-    Notice(backendDisclosure(backend))
+    NoticeCard(backendDisclosure(backend))
 
     if (permissionDenied) {
-        Notice(
+        NoticeCard(
             "Microphone permission was declined. Voice Check needs it to listen, and " +
                 "nothing else in TrustLens does. You can grant it in Settings, or type the " +
                 "message below instead.",
@@ -158,9 +169,7 @@ private fun IdlePane(
     }
 
     if (backend != null) {
-        Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
-            Text("Start listening")
-        }
+        PrimaryButton(text = "Start listening", onClick = onStart)
     }
 
     ManualEntry(
@@ -177,39 +186,28 @@ private fun IdlePane(
 private fun ListeningPane(partial: String, onStop: () -> Unit) {
     Text(
         text = "Listening…",
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleLarge,
+        color = TrustLens.colors.text,
     )
     Text(
         text = "The microphone is on. It stops when you press Stop, when speech ends, or " +
             "when you leave this screen.",
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = TrustLens.colors.textMuted,
     )
 
     if (partial.isNotBlank()) {
-        // Interim words only, so the user can see it is working. Not analysed.
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = "\"$partial\"",
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
+        // Interim words only, so the user can see it is working. Never analysed, and drawn
+        // unlike the finished transcript so it cannot be mistaken for one.
+        Text(
+            text = "“$partial”",
+            style = MaterialTheme.typography.bodyMedium,
+            fontStyle = FontStyle.Italic,
+            color = TrustLens.colors.textMuted,
+        )
     }
 
-    Button(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Stop") }
-}
-
-@Composable
-private fun WorkingPane() {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        CircularProgressIndicator()
-        Text("Analysing…", style = MaterialTheme.typography.bodyLarge)
-    }
+    PrimaryButton(text = "Stop", onClick = onStop)
 }
 
 @Composable
@@ -220,13 +218,13 @@ private fun ResultPane(
 ) {
     when (outcome) {
         is VoiceCheckOutcome.Analysed -> {
-            Notice(
+            NoticeCard(
                 "Source: ${backendLabel(outcome.backend)}. The words below were analysed " +
                     "exactly like a pasted message — speech itself is not treated as a " +
                     "risk signal.",
             )
             if (outcome.isPartial) {
-                Notice(
+                NoticeCard(
                     "Only a few words were recognised, so this assessment is based on " +
                         "partial content. Consider listening again.",
                 )
@@ -234,12 +232,13 @@ private fun ResultPane(
 
             RiskResultView(result = outcome.result)
 
-            TranscriptCard(outcome.transcript)
+            QuotedContent(label = "Transcript", text = outcome.transcript)
         }
 
-        VoiceCheckOutcome.NoSpeech -> Guidance(
-            title = "No speech was recognised.",
-            body = "No assessment was made, because nothing was heard.",
+        VoiceCheckOutcome.NoSpeech -> EmptyState(
+            title = "No speech was recognised",
+            body = "No assessment was made, because nothing was heard. That is not the same " +
+                "as finding nothing wrong.",
             hints = listOf(
                 "Speak a little closer to the phone",
                 "Move somewhere quieter",
@@ -247,16 +246,15 @@ private fun ResultPane(
             ),
         )
 
-        is VoiceCheckOutcome.Unavailable -> Guidance(
-            title = "Voice recognition unavailable.",
-            body = "${outcome.reason}. You can paste or type the message instead.",
-            hints = emptyList(),
+        is VoiceCheckOutcome.Unavailable -> UnknownState(
+            title = "Voice recognition unavailable",
+            body = "${outcome.reason}. You can paste or type the message instead — it is " +
+                "analysed exactly the same way.",
         )
 
-        is VoiceCheckOutcome.Failed -> Guidance(
-            title = "Could not complete the recognition.",
+        is VoiceCheckOutcome.Failed -> ErrorState(
+            title = "Could not complete the recognition",
             body = outcome.reason,
-            hints = emptyList(),
         )
 
         null -> Unit
@@ -266,12 +264,11 @@ private fun ResultPane(
         ManualEntry(prompt = "Type or paste what was said", onSubmit = onManualText)
     }
 
-    OutlinedButton(
+    SecondaryButton(
+        text = "Start over",
         onClick = onReset,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-    ) {
-        Text("Start over")
-    }
+        modifier = Modifier.padding(top = Space.sm),
+    )
 }
 
 @Composable
@@ -282,73 +279,28 @@ private fun ManualEntry(prompt: String, onSubmit: (String) -> Unit) {
         value = text,
         onValueChange = { text = it },
         label = { Text(prompt) },
-        minLines = 3,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp),
+        shape = Corner.inner,
+        textStyle = MaterialTheme.typography.bodyLarge,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = TrustLens.colors.surface,
+            unfocusedContainerColor = TrustLens.colors.surface,
+        ),
     )
-    Button(
+    PrimaryButton(
+        text = "Analyse this text",
         onClick = { onSubmit(text) },
         enabled = text.isNotBlank(),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text("Analyse this text")
-    }
+    )
 }
 
-/**
- * What was actually heard, shown so the user can judge the recognition for themselves —
- * speech recognisers mishear, and a verdict on the wrong words is worth knowing about.
- * Rendered as inert text; links inside it are not clickable.
- */
-@Composable
-private fun TranscriptCard(text: String) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = "Transcript",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(text = "\"$text\"", style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-private fun Guidance(title: String, body: String, hints: List<String>) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text(body)
-        hints.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
-    }
-}
-
-@Composable
-private fun Notice(text: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(12.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-private fun backendLabel(backend: TranscriptionBackend): String = when (backend) {
+internal fun backendLabel(backend: TranscriptionBackend): String = when (backend) {
     TranscriptionBackend.ON_DEVICE -> "on-device speech recognition"
     TranscriptionBackend.SYSTEM_MAY_USE_NETWORK -> "the system recogniser (may use network)"
     TranscriptionBackend.MANUAL_ENTRY -> "text you typed"
 }
 
-private fun backendDisclosure(backend: TranscriptionBackend?): String = when (backend) {
+internal fun backendDisclosure(backend: TranscriptionBackend?): String = when (backend) {
     TranscriptionBackend.ON_DEVICE ->
         "This device supports on-device speech recognition. Your voice is transcribed " +
             "locally and no audio is uploaded or saved."

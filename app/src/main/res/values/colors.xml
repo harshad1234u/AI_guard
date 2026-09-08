@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#1B4D8F</color>
+    <!--
+      The handful of colours the platform needs before Compose is running: the launcher icon,
+      the startup screen and the window background. Their Compose counterparts live in
+      :core's TrustLensColors, and these four are kept in step with them by hand — there are
+      only four, and a resource cannot read a Compose token.
+    -->
+    <color name="ic_launcher_background">#14477D</color>
+    <color name="splash_background">#14477D</color>
+
+    <!-- LightTrustLensColors.screen -->
+    <color name="trustlens_screen">#F3F5F9</color>
 </resources>

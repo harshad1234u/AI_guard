@@ -5,24 +5,20 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -33,16 +29,32 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.trustlens.core.design.AlertCard
+import com.trustlens.core.design.Corner
+import com.trustlens.core.design.EmptyState
+import com.trustlens.core.design.ErrorState
+import com.trustlens.core.design.FieldRow
+import com.trustlens.core.design.LoadingState
+import com.trustlens.core.design.NoticeCard
+import com.trustlens.core.design.PrimaryButton
+import com.trustlens.core.design.SectionHeader
+import com.trustlens.core.design.ScreenHeader
+import com.trustlens.core.design.SecondaryButton
+import com.trustlens.core.design.Space
+import com.trustlens.core.design.StatusChip
+import com.trustlens.core.design.TrustLens
+import com.trustlens.core.design.TrustLensCard
 import com.trustlens.domain.QrPayload
 import com.trustlens.domain.QrScanOutcome
+import com.trustlens.domain.SafeAction
 import com.trustlens.domain.UpiPaymentRequest
 import com.trustlens.feature.result.RiskResultView
 
@@ -53,10 +65,13 @@ import com.trustlens.feature.result.RiskResultView
  * screen never does is act on it: there is no Open, no Pay, and no button anywhere on this
  * screen that hands a payload to another app. The decoded content is shown as inert text so
  * the user can see exactly what the code really contained.
+ *
+ * The reticle is a square with corner brackets, deliberately unlike Lens Scan's wide text
+ * guide — the two camera screens do different jobs and must not invite the same framing.
  */
 @Composable
 fun QrScanScreen(
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
     viewModel: QrScanViewModel = hiltViewModel(),
 ) {
@@ -82,16 +97,22 @@ fun QrScanScreen(
         if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = TrustLens.colors.screen,
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = Space.gutter),
         ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onBack) { Text("Back") }
-            }
+            ScreenHeader(
+                title = "Scan a QR code",
+                onBack = onBack,
+                subtitle = "Decoded and investigated — never opened, never paid.",
+                modifier = Modifier.padding(top = Space.sm, bottom = Space.md),
+            )
 
             when {
                 !hasPermission -> CameraPermissionRationale(
@@ -117,24 +138,27 @@ fun QrScanScreen(
 @Composable
 private fun CameraPermissionRationale(wasDenied: Boolean, onRequest: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(top = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        Text("Camera access needed", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            text = "Camera access needed",
+            style = MaterialTheme.typography.titleLarge,
+            color = TrustLens.colors.text,
+        )
         Text(
             text = "Scan QR reads a code through the camera and investigates what it " +
                 "contains. Frames stay on this device and are never uploaded.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = TrustLens.colors.textMuted,
         )
         if (wasDenied) {
-            Text(
-                text = "Permission was declined. You can still use Check URL or Check " +
-                    "Message, or grant camera access in Settings.",
-                style = MaterialTheme.typography.bodyMedium,
+            NoticeCard(
+                "Permission was declined. You can still use Check URL or Check Message, " +
+                    "or grant camera access in Settings.",
             )
         }
-        Button(onClick = onRequest) { Text("Allow camera") }
+        PrimaryButton(text = "Allow camera", onClick = onRequest)
     }
 }
 
@@ -168,17 +192,21 @@ private fun ScannerPane(
 
     Column(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        Text("Scan QR", style = MaterialTheme.typography.headlineSmall)
         Text(
-            text = "Point at a QR code. It is decoded on this device and investigated — " +
-                "never opened, and never paid.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = "Decoding a code is not the same as acting on it. TrustLens reads what " +
+                "the code contains and stops there.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TrustLens.colors.textMuted,
         )
 
-        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(Corner.card),
+        ) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
@@ -188,18 +216,32 @@ private fun ScannerPane(
                     }
                 },
             )
+
+            // A square reticle: a QR code is square, and this is what tells the user at a
+            // glance that they are not on the text scanner.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(0.68f)
+                    .aspectRatio(1f)
+                    .border(2.dp, TrustLens.colors.surface.copy(alpha = 0.85f), Corner.card),
+            )
+
             if (isWorking) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(TrustLens.colors.screen.copy(alpha = 0.7f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LoadingState()
                 }
             }
         }
 
-        Text(
-            text = if (isWorking) "Investigating…" else "Searching for a code…",
-            modifier = Modifier.padding(bottom = 16.dp),
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Box(Modifier.fillMaxWidth().padding(bottom = Space.lg), Alignment.Center) {
+            StatusChip(if (isWorking) "Investigating…" else "Searching for a code…")
+        }
     }
 }
 
@@ -207,33 +249,53 @@ private fun ScannerPane(
 private fun QrResult(state: QrScanUiState, onRescan: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        Text("QR code detected", style = MaterialTheme.typography.headlineSmall)
-
-        state.cameraError?.let { Notice("Camera problem: $it") }
+        state.cameraError?.let { ErrorState(title = "Camera problem", body = it) }
 
         when (val outcome = state.outcome) {
             is QrScanOutcome.Analysed -> {
+                /*
+                 * The payment refusal, before anything else on the screen.
+                 *
+                 * A UPI code the engine flagged as one not to pay is the one case where the
+                 * user may already have their thumb over a payment app, so DO NOT PAY is
+                 * hoisted above the payload and the verdict rather than being left to appear
+                 * in the safe-action list further down. The action itself still comes from the
+                 * engine — this only changes where it is drawn.
+                 */
+                if (SafeAction.DO_NOT_PAY in outcome.result.risk.recommendedActions) {
+                    AlertCard(
+                        title = "DO NOT PAY",
+                        body = "This code asks for a payment and TrustLens found reasons not " +
+                            "to trust it. Nothing has been paid — TrustLens cannot start a " +
+                            "payment, and this screen has no button that would.",
+                    )
+                }
+
+                SectionHeader("What the code contained")
                 PayloadCard(outcome.payload)
-                Notice(
+
+                NoticeCard(
                     "Decoded on this device. TrustLens has not opened this code, contacted " +
                         "anything in it, or started any payment.",
                 )
                 RiskResultView(result = outcome.result)
             }
 
-            QrScanOutcome.Empty -> EmptyGuidance()
+            QrScanOutcome.Empty -> EmptyState(
+                title = "The code decoded to nothing",
+                body = "No assessment was made, because there was nothing to assess.",
+            )
 
             null -> Unit
         }
 
-        Button(
+        SecondaryButton(
+            text = "Scan another code",
             onClick = onRescan,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-        ) {
-            Text("Scan another code")
-        }
+            modifier = Modifier.padding(vertical = Space.lg),
+        )
     }
 }
 
@@ -245,49 +307,31 @@ private fun QrResult(state: QrScanUiState, onRescan: () -> Unit) {
  */
 @Composable
 private fun PayloadCard(payload: QrPayload) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Field("Type", typeLabel(payload))
-            HorizontalDivider()
+    TrustLensCard(modifier = Modifier.fillMaxWidth()) {
+        StatusChip(typeLabel(payload))
 
-            when (payload) {
-                is QrPayload.Url -> Field("Link", payload.url)
-                is QrPayload.Text -> Field("Content", payload.raw)
-                is QrPayload.Upi -> UpiFields(payload.request)
-                QrPayload.Empty -> Unit
-            }
+        when (payload) {
+            is QrPayload.Url -> FieldRow("Link", payload.url)
+            is QrPayload.Text -> FieldRow("Content", payload.raw)
+            is QrPayload.Upi -> UpiFields(payload.request)
+            QrPayload.Empty -> Unit
         }
     }
 }
 
 @Composable
 private fun UpiFields(request: UpiPaymentRequest) {
-    Field("Payee", request.payeeAddress ?: "not stated in the code")
+    FieldRow("Payee", request.payeeAddress ?: "not stated in the code")
     request.payeeName?.let {
         // Named by whoever created the code, and verified by nobody.
-        Field("Claimed name", "$it (unverified)")
+        FieldRow("Claimed name", "$it (unverified)")
     }
     request.amount?.let {
-        Field("Amount", listOfNotNull(request.currency, it).joinToString(" "))
+        FieldRow("Amount", listOfNotNull(request.currency, it).joinToString(" "))
     }
-    request.merchantCode?.let { Field("Merchant code", it) }
-    request.transactionNote?.let { Field("Note", it) }
-    request.url?.let { Field("Link inside the code", it) }
-}
-
-@Composable
-private fun Field(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(text = value, style = MaterialTheme.typography.bodyMedium)
-    }
+    request.merchantCode?.let { FieldRow("Merchant code", it) }
+    request.transactionNote?.let { FieldRow("Note", it) }
+    request.url?.let { FieldRow("Link inside the code", it) }
 }
 
 private fun typeLabel(payload: QrPayload): String = when (payload) {
@@ -295,33 +339,4 @@ private fun typeLabel(payload: QrPayload): String = when (payload) {
     is QrPayload.Upi -> "UPI payment request"
     is QrPayload.Text -> "Text"
     QrPayload.Empty -> "Empty"
-}
-
-@Composable
-private fun EmptyGuidance() {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = "The code decoded to nothing.",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text("No assessment was made, because there was nothing to assess.")
-    }
-}
-
-@Composable
-private fun Notice(text: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(12.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
 }

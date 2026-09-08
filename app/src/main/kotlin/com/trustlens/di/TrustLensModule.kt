@@ -6,6 +6,7 @@ import com.trustlens.ai.MlKitTextRecogniser
 import com.trustlens.ai.OnnxScamClassifier
 import com.trustlens.domain.AiClassifier
 import com.trustlens.domain.IndicatorExtractor
+import com.trustlens.domain.EmailParser
 import com.trustlens.domain.QrPayloadClassifier
 import com.trustlens.domain.ReputationSource
 import com.trustlens.domain.RiskAssessor
@@ -16,8 +17,10 @@ import com.trustlens.threatintel.OkHttpTransport
 import com.trustlens.threatintel.ProviderCredentials
 import com.trustlens.threatintel.UrlhausSource
 import com.trustlens.threatintel.VirusTotalSource
+import com.trustlens.investigation.DeterministicEmailParser
 import com.trustlens.investigation.DeterministicQrPayloadClassifier
 import com.trustlens.investigation.DeterministicUrlAnalyzer
+import com.trustlens.investigation.MultilingualIndicatorExtractor
 import com.trustlens.investigation.RuleBasedIndicatorExtractor
 import com.trustlens.riskengine.RiskEngine
 import dagger.Module
@@ -42,9 +45,20 @@ object EngineModule {
     @Singleton
     fun provideRiskAssessor(): RiskAssessor = RiskEngine()
 
+    /**
+     * The rule-based extractor, wrapped so Hindi and Hinglish reach the same signals English
+     * already does.
+     *
+     * The decorator only ever *adds* flags, so every surface behaves exactly as before on
+     * English content — `MultilingualParityTest` pins that against the bare extractor. What
+     * changes is that a Hindi or code-switched scam stops scoring as harmless: measured
+     * before this wrapper existed, a complete Hindi bank-impersonation OTP script produced
+     * every indicator flag false and landed at 3/100, LOW.
+     */
     @Provides
     @Singleton
-    fun provideIndicatorExtractor(): IndicatorExtractor = RuleBasedIndicatorExtractor()
+    fun provideIndicatorExtractor(): IndicatorExtractor =
+        MultilingualIndicatorExtractor(RuleBasedIndicatorExtractor())
 
     @Provides
     @Singleton
@@ -53,6 +67,10 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideQrPayloadClassifier(): QrPayloadClassifier = DeterministicQrPayloadClassifier()
+
+    @Provides
+    @Singleton
+    fun provideEmailParser(): EmailParser = DeterministicEmailParser()
 }
 
 @Module

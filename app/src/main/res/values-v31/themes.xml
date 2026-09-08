@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      API 31+ draws its own splash screen for every cold launch and ignores windowBackground
+      for it, so the mark is handed to the platform instead of to a layer-list. Same result,
+      same zero cost: the system dismisses it the moment the app is ready to draw.
+    -->
+    <style name="Theme.TrustLens.Splash" parent="Theme.TrustLens">
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_trustlens_mark</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/splash_background</item>
+    </style>
+</resources>

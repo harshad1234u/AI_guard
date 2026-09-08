@@ -1,13 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher icon's foreground: the same shield-and-lens mark as the splash and :core's
+  TrustLensMark, inset into the adaptive icon's 66dp safe zone so no part of it is clipped by
+  a round, squircle or teardrop mask.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Shield outline with a lens aperture: "see the risk before you click". -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,28 L72,34 L72,52 C72,64 64,72 54,76 C44,72 36,64 36,52 L36,34 Z" />
-    <path
-        android:fillColor="#1B4D8F"
-        android:pathData="M54,42 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+    <group
+        android:scaleX="0.62"
+        android:scaleY="0.62"
+        android:pivotX="54"
+        android:pivotY="54">
+        <path
+            android:pathData="M54,8 L92.9,23.1 L92.9,55.4 C92.9,81.3 75.6,94.3 54,101.9 C32.4,94.3 15.1,81.3 15.1,55.4 L15.1,23.8 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="9.2"
+            android:strokeLineJoin="round"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M49.7,48.6 m-16.7,0 a16.7,16.7 0 1,0 33.5,0 a16.7,16.7 0 1,0 -33.5,0"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="9.2" />
+        <path
+            android:pathData="M62,60.6 L75,73.6"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="9.2"
+            android:strokeLineCap="round" />
+    </group>
 </vector>

@@ -9,6 +9,9 @@ enum class InvestigationSource {
     QR,
     VOICE,
     PHONE_NUMBER,
+
+    /** A message shared in from a mail app. Analysed by the identical text pipeline. */
+    EMAIL,
 }
 
 /** Which compute path actually executed an inference. Never inferred, always reported. */

@@ -5,24 +5,20 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -32,27 +28,42 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.trustlens.core.design.Corner
+import com.trustlens.core.design.EmptyState
+import com.trustlens.core.design.ErrorState
+import com.trustlens.core.design.LoadingState
+import com.trustlens.core.design.NoticeCard
+import com.trustlens.core.design.PrimaryButton
+import com.trustlens.core.design.QuotedContent
+import com.trustlens.core.design.ScreenHeader
+import com.trustlens.core.design.SecondaryButton
+import com.trustlens.core.design.Space
+import com.trustlens.core.design.TrustLens
 import com.trustlens.domain.ScanOutcome
 import com.trustlens.feature.result.RiskResultView
 
 /**
- * Lens Scan.
+ * Lens Scan — the camera reading *text*, not codes.
  *
- * Point the camera at a suspicious message, capture one frame, and the recognised text goes
- * through the same pipeline as a pasted message. The camera does not detect anything by
- * itself — OCR extracts words, and the existing analysis judges them.
+ * Point the camera at a suspicious message, capture one frame, and the recognised words go
+ * through the same pipeline as a pasted message. The camera detects nothing by itself: OCR
+ * extracts text and the existing analysis judges it.
+ *
+ * The framing guide is a wide, text-shaped rectangle rather than the square reticle a QR
+ * scanner uses. That difference is the whole point of the screen — someone who mistakes this
+ * for the QR scanner will hold the phone wrong and get nothing.
  */
 @Composable
 fun LensScanScreen(
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
     viewModel: LensScanViewModel = hiltViewModel(),
 ) {
@@ -78,16 +89,22 @@ fun LensScanScreen(
         if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = TrustLens.colors.screen,
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = Space.gutter),
         ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onBack) { Text("Back") }
-            }
+            ScreenHeader(
+                title = "Scan with the camera",
+                onBack = onBack,
+                subtitle = "Point your camera at suspicious text.",
+                modifier = Modifier.padding(top = Space.sm, bottom = Space.md),
+            )
 
             when {
                 !hasPermission -> CameraPermissionRationale(
@@ -113,24 +130,27 @@ fun LensScanScreen(
 @Composable
 private fun CameraPermissionRationale(wasDenied: Boolean, onRequest: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(top = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        Text("Camera access needed", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            text = "Camera access needed",
+            style = MaterialTheme.typography.titleLarge,
+            color = TrustLens.colors.text,
+        )
         Text(
             text = "Lens Scan reads a suspicious message through the camera. " +
                 "The image stays on this device and is never uploaded.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = TrustLens.colors.textMuted,
         )
         if (wasDenied) {
-            Text(
-                text = "Permission was declined. You can still use Check Message to paste " +
-                    "text instead, or grant camera access in Settings.",
-                style = MaterialTheme.typography.bodyMedium,
+            NoticeCard(
+                "Permission was declined. You can still use Check Message to paste text " +
+                    "instead, or grant camera access in Settings.",
             )
         }
-        Button(onClick = onRequest) { Text("Allow camera") }
+        PrimaryButton(text = "Allow camera", onClick = onRequest)
     }
 }
 
@@ -151,17 +171,21 @@ private fun CameraPane(
 
     Column(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        Text("Lens Scan", style = MaterialTheme.typography.headlineSmall)
         Text(
-            text = "Point at the message and tap Scan. One picture is taken and read " +
-                "on this device.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = "One picture is taken and read on this device. Nothing is stored, and " +
+                "nothing is uploaded.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TrustLens.colors.textMuted,
         )
 
-        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(Corner.card),
+        ) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
@@ -171,20 +195,35 @@ private fun CameraPane(
                     }
                 },
             )
+
+            // A wide, text-shaped guide. Deliberately not the square reticle of a QR scanner:
+            // the two screens do different things and must not invite the same framing.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(0.92f)
+                    .fillMaxHeight(0.46f)
+                    .border(2.dp, TrustLens.colors.surface.copy(alpha = 0.85f), Corner.inner),
+            )
+
             if (isWorking) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(TrustLens.colors.screen.copy(alpha = 0.7f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LoadingState(label = "Reading the text…")
                 }
             }
         }
 
-        Button(
+        PrimaryButton(
+            text = if (isWorking) "Reading…" else "Scan",
             onClick = { camera.capture(onCaptured) },
             enabled = !isWorking,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-        ) {
-            Text(if (isWorking) "Reading…" else "Scan")
-        }
+            modifier = Modifier.padding(bottom = Space.lg),
+        )
     }
 }
 
@@ -194,23 +233,20 @@ private fun ScanResult(state: LensScanUiState, onRescan: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        Text("Scan result", style = MaterialTheme.typography.headlineSmall)
-
         state.cameraError?.let { error ->
-            Notice("Camera problem: $error")
-            OutlinedButton(onClick = onRescan) { Text("Try again") }
+            ErrorState(title = "Camera problem", body = error)
         }
 
         when (val outcome = state.outcome) {
             is ScanOutcome.Analysed -> {
-                Notice(
+                NoticeCard(
                     "Source: Camera / OCR. The text below was read from the picture and " +
                         "analysed exactly like a pasted message.",
                 )
                 if (outcome.isPartial) {
-                    Notice(
+                    NoticeCard(
                         "Only a small amount of text was read, so this assessment is based " +
                             "on partial content. Consider scanning again.",
                     )
@@ -218,79 +254,33 @@ private fun ScanResult(state: LensScanUiState, onRescan: () -> Unit) {
 
                 RiskResultView(result = outcome.result)
 
-                RecognisedTextCard(outcome.recognisedText)
+                QuotedContent(label = "Extracted text", text = outcome.recognisedText)
             }
 
-            ScanOutcome.NoTextFound -> NoTextGuidance()
+            ScanOutcome.NoTextFound -> EmptyState(
+                title = "No readable text detected",
+                body = "No assessment was made, because nothing was read. That is not the " +
+                    "same as finding nothing wrong.",
+                hints = listOf(
+                    "Move closer to the message",
+                    "Improve the lighting",
+                    "Hold the phone steady",
+                    "Make sure the whole message is in frame",
+                ),
+            )
 
-            is ScanOutcome.Failed -> {
-                Notice("Could not read the picture: ${outcome.reason}")
-            }
+            is ScanOutcome.Failed -> ErrorState(
+                title = "Could not read the picture",
+                body = outcome.reason,
+            )
 
             null -> Unit
         }
 
-        Button(
+        SecondaryButton(
+            text = "Scan again",
             onClick = onRescan,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-        ) {
-            Text("Scan again")
-        }
-    }
-}
-
-@Composable
-private fun NoTextGuidance() {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = "No readable text detected.",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text("No assessment was made, because nothing was read.")
-        listOf(
-            "Move closer to the message",
-            "Improve the lighting",
-            "Hold the phone steady",
-            "Make sure the whole message is in frame",
-        ).forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
-    }
-}
-
-/**
- * The extracted text, shown so the user can judge whether OCR read the message correctly.
- * Rendered as inert text — links inside it are not clickable.
- */
-@Composable
-private fun RecognisedTextCard(text: String) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = "Extracted text",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(text = text, style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-private fun Notice(text: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(12.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = Space.lg),
         )
     }
 }

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The TrustLens startup screen.
+
+  This is the window background, which Android draws from the moment the process starts until
+  the first Compose frame is ready. That is the honest implementation of the brief: it appears
+  instantly and disappears the moment initialisation is actually complete, because it *is* the
+  window until then. A Compose splash could only do one of two things instead — flash for a
+  single frame, or hold behind a timer that pretends to be work.
+
+  TrustLens has no asynchronous startup to wait on: Hilt builds its graph lazily, and the ONNX
+  session loads on first use rather than at launch. So there is nothing to show progress
+  against, and a progress indicator here would be decoration claiming to be a measurement.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+    <item
+        android:drawable="@drawable/ic_trustlens_mark"
+        android:gravity="center"
+        android:width="112dp"
+        android:height="112dp" />
+</layer-list>

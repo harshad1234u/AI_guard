@@ -89,6 +89,30 @@ class OnnxScamClassifier(private val context: Context) : AiClassifier {
         text: String,
     ): ClassificationResult {
         val features = vectoriser.transform(text)
+
+        /*
+         * An all-zero feature vector means not one word of this text is in the trained
+         * vocabulary. The model would still answer — logistic regression on a zero vector
+         * returns its intercept — but that answer is the model's prior, not a measurement of
+         * this text, and it is bit-identical for every such input.
+         *
+         * Measured on the shipped model: the zero vector yields p(scam) = 0.10117331, and so
+         * do "मैं बैंक से बोल रहा हूँ … OTP … बताइए" and "आज मौसम बहुत अच्छा है" alike. Passing
+         * that through would put "On-device classifier rates this as likely spam or scam
+         * wording (+3)" on screen for Hindi small talk — a claim the model never made.
+         *
+         * So it is reported as unavailable, which is the rule this class already follows
+         * everywhere else: a classifier that cannot assess something must never look like a
+         * classifier that assessed it and found nothing. The deterministic layer, which does
+         * cover Hindi, carries the verdict instead.
+         */
+        if (features.all { it == 0f }) {
+            return ClassificationResult.Unavailable(
+                "The on-device model has no vocabulary coverage for this text — " +
+                    "it was scored by the deterministic rules alone",
+            )
+        }
+
         val environment = OrtEnvironment.getEnvironment()
 
         OnnxTensor.createTensor(

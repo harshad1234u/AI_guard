@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TrustLens</string>
+
+    <!--
+      The label Android shows in the text-selection toolbar, next to Copy and Share.
+      Kept to the product name: the toolbar is narrow, and anything longer is collapsed into
+      the overflow menu where nobody finds it.
+    -->
+    <string name="process_text_label">TrustLens</string>
 </resources>

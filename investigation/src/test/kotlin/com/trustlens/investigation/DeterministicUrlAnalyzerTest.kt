@@ -392,6 +392,177 @@ class DeterministicUrlAnalyzerTest {
         assertThat(observations).isEmpty()
     }
 
+    // --- Brand impersonation, from the link alone -------------------------------------
+    //
+    // These need no claimed organisation: the URL is the whole input, as it is on the Check
+    // URL screen and in a QR code. Before this existed, every case below scored zero.
+
+    @Test
+    fun `a brand token on a free tld domain is impersonation`() {
+        val observations = analyzer.observe(listOf("https://sbi.bank.tk/verify"), emptyList())
+
+        assertThat(observations.map { it.kind })
+            .contains(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+    }
+
+    @Test
+    fun `a brand token as a subdomain label is impersonation`() {
+        val observations = analyzer.observe(listOf("https://sbi.example.com"), emptyList())
+
+        assertThat(observations.map { it.kind })
+            .contains(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+    }
+
+    @Test
+    fun `a brand token as a leading hyphen component is impersonation`() {
+        val observations = analyzer.observe(listOf("https://sbi-login.example.com"), emptyList())
+
+        assertThat(observations.map { it.kind })
+            .contains(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+    }
+
+    @Test
+    fun `a brand token as a trailing hyphen component is impersonation`() {
+        val observations =
+            analyzer.observe(listOf("https://secure-sbi.example.com"), emptyList())
+
+        assertThat(observations.map { it.kind })
+            .contains(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+    }
+
+    @Test
+    fun `a brand token nested in deep subdomains is impersonation`() {
+        val observations =
+            analyzer.observe(listOf("https://onlinesbi.sbi.example.com"), emptyList())
+
+        assertThat(observations.map { it.kind })
+            .contains(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+    }
+
+    @Test
+    fun `the official domain is never impersonation, with or without www`() {
+        listOf("https://sbi.co.in/login", "https://www.sbi.co.in/login").forEach { url ->
+            assertThat(analyzer.observe(listOf(url), emptyList()).map { it.kind })
+                .doesNotContain(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+        }
+    }
+
+    @Test
+    fun `a brand that is itself the registrable official domain is not impersonation`() {
+        val observations = analyzer.observe(listOf("https://onlinesbi.sbi"), emptyList())
+
+        assertThat(observations.map { it.kind })
+            .doesNotContain(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+    }
+
+    @Test
+    fun `another organisation's official domain is not impersonation`() {
+        listOf("https://www.icicibank.com", "https://icicibank.com").forEach { url ->
+            assertThat(analyzer.observe(listOf(url), emptyList()).map { it.kind })
+                .doesNotContain(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+        }
+    }
+
+    @Test
+    fun `a brand token is matched as a label, never as a substring`() {
+        // sbicards.com is a real SBI product and basbi.com is somebody else entirely.
+        // A `contains("sbi")` rule would call both of them phishing.
+        listOf(
+            "https://sbicards.com/offers",
+            "https://basbi.com",
+            "https://mysbi.example.com",
+        ).forEach { url ->
+            assertThat(analyzer.observe(listOf(url), emptyList()).map { it.kind })
+                .doesNotContain(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+        }
+    }
+
+    @Test
+    fun `generic service words are not brands`() {
+        // "bank" appears in bank.sbi and "pay" in pay.google.com, so both are reachable
+        // from the official-domain table. Neither identifies an organisation.
+        listOf(
+            "https://bank.example.com",
+            "https://pay.example.com",
+            "https://secure-login.example.com",
+        ).forEach { url ->
+            assertThat(analyzer.observe(listOf(url), emptyList()).map { it.kind })
+                .doesNotContain(ObservationKind.DOMAIN_ORGANISATION_MISMATCH)
+        }
+    }
+
+    @Test
+    fun `an ordinary unknown domain is still not impersonation`() {
+        listOf(
+            "https://example.com/about",
+            "https://some-small-blog.in/post/1",
+            "https://github.com",
+        ).forEach { url ->
+            assertThat(analyzer.observe(listOf(url), emptyList())).isEmpty()
+        }
+    }
+
+    @Test
+    fun `the message-context mismatch keeps its wording when both could fire`() {
+        // Both checks can produce DOMAIN_ORGANISATION_MISMATCH here. The one that can name
+        // what the message claimed is the more informative sentence and must win.
+        val observations =
+            analyzer.observe(listOf("https://sbi-kyc.example.com/verify"), listOf("SBI"))
+
+        val mismatch = observations
+            .first { it.kind == ObservationKind.DOMAIN_ORGANISATION_MISMATCH }
+        assertThat(mismatch.summary).contains("Message claims to be from SBI")
+    }
+
+    // --- Free-registration TLDs -------------------------------------------------------
+
+    @Test
+    fun `each free registration tld produces a suspicious url observation`() {
+        listOf(
+            "https://freerecharge.ml/offer",
+            "https://example.tk",
+            "https://example.ga",
+            "https://example.cf",
+            "https://example.gq",
+        ).forEach { url ->
+            assertThat(analyzer.observe(listOf(url), emptyList()).map { it.kind })
+                .contains(ObservationKind.SUSPICIOUS_URL)
+        }
+    }
+
+    @Test
+    fun `ordinary tlds produce no suspicious url observation`() {
+        listOf(
+            "https://example.com",
+            "https://example.co.in",
+            "https://example.org/x",
+            "https://example.xyz",
+        ).forEach { url ->
+            assertThat(analyzer.observe(listOf(url), emptyList()).map { it.kind })
+                .doesNotContain(ObservationKind.SUSPICIOUS_URL)
+        }
+    }
+
+    @Test
+    fun `an ip literal is not read as a free tld`() {
+        assertThat(analyzer.observe(listOf("http://192.168.1.10/login"), emptyList())
+            .map { it.kind })
+            .doesNotContain(ObservationKind.SUSPICIOUS_URL)
+    }
+
+    @Test
+    fun `the target case carries both independent local signals`() {
+        // The audit's critical case. Neither signal needs threat intelligence, and the two
+        // are independent facts: a brand token that does not own the domain, on a domain
+        // anyone could register for nothing.
+        val observations = analyzer.observe(listOf("https://sbi.bank.tk/verify"), emptyList())
+
+        assertThat(observations.map { it.kind }).containsAtLeast(
+            ObservationKind.DOMAIN_ORGANISATION_MISMATCH,
+            ObservationKind.SUSPICIOUS_URL,
+        )
+    }
+
     // --- Malformed input --------------------------------------------------------------
 
     @Test
