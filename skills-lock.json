@@ -1,6 +1,18 @@
 {
   "version": 1,
   "skills": {
+    "android-compose-foundations": {
+      "source": "krutikjain/android-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/android-compose-foundations/SKILL.md",
+      "computedHash": "d0626d2fbf610f7f1992b935c97c0fb5ad44c4b5167f68a2c3262bbe9bf67250"
+    },
+    "android-development": {
+      "source": "dpconde/claude-android-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "cd57be7ef5414c15665156dbdb458c70712799a3dbc6a069c5cb951914ba6c19"
+    },
     "claude-android-ninja": {
       "source": "drjacky/claude-android-ninja",
       "sourceType": "github",
@@ -13,11 +25,23 @@
       "skillPath": "skills/engineering/code-review/SKILL.md",
       "computedHash": "b4f17857c85ca60af1df7d0b623dd03c2a48419f6123e714f3d9748ca744a1bf"
     },
+    "design-taste-frontend": {
+      "source": "leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill/SKILL.md",
+      "computedHash": "899b84384f74f540ea5284d9b2e9234e050998b42eacc805410b518d4226c0b3"
+    },
     "diagnosing-bugs": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
       "computedHash": "dcaaa3eb81195329f65f27574d9a67dc776160dd2e4d7798d1afb1e4a5f3695a"
+    },
+    "image-to-code": {
+      "source": "leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/image-to-code-skill/SKILL.md",
+      "computedHash": "3d2ac14d956fdafc5500d2108b90895e134d847f9f199e7f1d18bf1f814cf7c8"
     },
     "improve-codebase-architecture": {
       "source": "mattpocock/skills",

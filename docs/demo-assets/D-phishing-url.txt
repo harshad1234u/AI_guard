@@ -1,0 +1,22 @@
+DEMO INPUT — synthetic phishing link. Never opened by the app. Do not visit.
+Surface: Check Link  (also works pasted into Check Message)
+------------------------------------------------------------------------
+sbi.bank.tk/verify
+------------------------------------------------------------------------
+Expected score: 22/100     Expected band: GUARDED  (exact)
+
+Expected observations, with weights:
+  SUSPICIOUS_URL                    +10   free-registration .tk address
+  DOMAIN_ORGANISATION_MISMATCH      +12   "sbi" appears as a label, but the
+                                          registrable domain is bank.tk
+                                     = 22 -> GUARDED (20-39)
+
+ML: OFF — same reason as C.
+
+External corroboration: URLhaus and VirusTotal may return "no report" for
+this host. That is the expected and correct outcome, and it changes nothing:
+the 22 is entirely local. UNKNOWN is never treated as SAFE.
+
+Pair this with C. Same screen, same pipeline, no model involved in either —
+and the impersonation outranks the real bank. That ordering used to be
+inverted (5 against 26).

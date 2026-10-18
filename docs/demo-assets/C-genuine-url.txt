@@ -1,0 +1,16 @@
+DEMO INPUT — the real State Bank of India domain. Safe to display.
+Surface: Check Link  (also works pasted into Check Message)
+------------------------------------------------------------------------
+https://www.sbi.co.in
+------------------------------------------------------------------------
+Expected score: 0/100      Expected band: LOW      (exact)
+Expected observations: none
+
+ML: OFF — "This is a link with no message around it. The classifier reads
+message wording, so it was not run — the link was analysed structurally
+instead."
+
+This is the P1 headline. Before the guard, this genuine bank domain scored
+p=0.8888 on the SMS classifier and collected +26 — the model ranked the real
+bank as more scam-like than the phish impersonating it, because a bare
+hostname is nothing like the SMS corpus it was trained on.

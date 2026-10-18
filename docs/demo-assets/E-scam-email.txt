@@ -1,0 +1,24 @@
+DEMO INPUT — synthetic email. No real sender, no real recipient.
+Surface: Check Email (share from any mail app, or paste)
+------------------------------------------------------------------------
+Sender:  alerts@sbi-secure.example.net
+Subject: Immediate action required: KYC verification pending
+
+Dear Customer,
+
+Your account will be suspended within 24 hours because your KYC is
+incomplete. Verify now at https://sbi-kyc.example.com/verify and confirm
+the OTP sent to your registered mobile number.
+
+Failure to comply will result in permanent closure.
+
+SBI Online Services
+------------------------------------------------------------------------
+Expected band: HIGH or CRITICAL   (band)
+Expected deterministic reasons: urgency, account threat, OTP request,
+organisation impersonation, domain/organisation mismatch.
+
+What to say out loud: the sender domain sbi-secure.example.net is checked by
+the same reputation providers, on the same scale, as any link. That is the
+ONLY part of this email that can leave the device — not the subject, not the
+body, not the local part before the @.

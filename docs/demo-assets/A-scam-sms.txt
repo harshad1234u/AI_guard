@@ -1,0 +1,22 @@
+DEMO INPUT — synthetic. Not a real message. Do not reuse outside a demo.
+Surface: Check Message
+------------------------------------------------------------------------
+URGENT: Your SBI account will be blocked today. Complete KYC at https://sbi-kyc.example.com/verify and share your OTP, or pay Rs. 4999.
+------------------------------------------------------------------------
+Expected band: CRITICAL   (band)
+
+Deterministic reasons that must appear, with their weights:
+  Creates urgency or time pressure                 +10
+  Requests an OTP or PIN                           +22
+  Requests a payment                               +15
+  Threatens account suspension                     +10
+  Claims to be SBI                                 +12
+  Message claims SBI, link goes to example.com     +12
+                                            total   81  -> CRITICAL (81-100)
+
+The band therefore does NOT depend on the classifier. Any ML contribution
+(max +30) is added on top and the score is capped at 100. Measured 100/100
+CRITICAL in the JVM calibration harness, which wires a mock classifier.
+
+Safe actions expected: DO_NOT_OPEN_LINK, DO_NOT_PAY, DO_NOT_SHARE_OTP,
+                       VERIFY_VIA_OFFICIAL_CHANNEL

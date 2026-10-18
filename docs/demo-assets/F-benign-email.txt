@@ -1,0 +1,14 @@
+DEMO INPUT — synthetic email.
+Surface: Check Email
+------------------------------------------------------------------------
+Sender:  notifications@github.com
+Subject: Your weekly digest
+
+Here is a summary of activity in repositories you watch this week.
+Three pull requests were merged and one issue was opened.
+------------------------------------------------------------------------
+Expected band: LOW   (band)
+Expected observations: none or minimal
+
+Purpose: proves the email surface is the same text pipeline, not a
+mail-specific "everything is suspicious" heuristic.

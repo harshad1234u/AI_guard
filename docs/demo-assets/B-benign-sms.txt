@@ -1,0 +1,11 @@
+DEMO INPUT — synthetic.
+Surface: Check Message
+------------------------------------------------------------------------
+Hi, are we still on for lunch at 1pm tomorrow?
+------------------------------------------------------------------------
+Expected band: LOW   (band)
+Expected observations: none
+Measured 0/100 LOW in the JVM calibration harness.
+
+Purpose: shows TrustLens is not a panic button. A tool that flags ordinary
+messages is a tool people switch off.

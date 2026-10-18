@@ -1,0 +1,21 @@
+DEMO INPUT — phrase to read aloud into Voice Check or Live Guard.
+Synthetic. Speak it clearly; this is a transcription demo, not an acting one.
+------------------------------------------------------------------------
+I am calling from SBI. Your account will be blocked today. Please tell me
+the OTP immediately.
+------------------------------------------------------------------------
+Expected band: MEDIUM or above   (band)
+Expected observations: OTP_REQUEST, URGENCY, ACCOUNT_THREAT,
+                       ORGANISATION_IMPERSONATION
+Expected safe actions: DO_NOT_SHARE_OTP, VERIFY_VIA_OFFICIAL_CHANNEL
+
+Optional redaction beat — read this instead, with the invented digits:
+
+  अभी आपके फोन पर छह अंकों का नंबर 483920 आया होगा, वो बताइए।
+
+483920 is a made-up number. The point is that it appears in NO evidence
+string and NO reason shown to the user, while OTP_REQUEST still fires.
+A test pins that.
+
+If ASR is unavailable on the device, use Check Message with the same text.
+Live Guard and Voice Check feed the identical pipeline.

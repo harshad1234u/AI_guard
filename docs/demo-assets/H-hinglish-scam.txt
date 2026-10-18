@@ -1,0 +1,11 @@
+DEMO INPUT — synthetic Hinglish scam.
+Surface: Voice / Live Guard / Check Message
+------------------------------------------------------------------------
+Main SBI se bol raha hoon, aapka account block ho jayega, abhi OTP bataiye.
+------------------------------------------------------------------------
+Expected observations: OTP_REQUEST, ACCOUNT_THREAT   (band)
+Expected safe action: DO_NOT_SHARE_OTP
+
+Purpose: code-switched Latin-script Hindi is scored, not treated as broken
+English. Same weights, same engine — there is no language multiplier
+anywhere in RiskWeights.

@@ -175,7 +175,11 @@ Device capabilities in use: **Camera** (OCR & QR) · **Microphone** (Voice Check
               └───────────────────────┘
 ```
 
-Target architecture. The backend policy (**NPU → GPU → CPU**, with runtime capability detection) is already coded — the NPU execution path awaits validation on iQOO hardware.
+Target architecture. Today the classifier runs through **ONNX Runtime on CPU**, with default session options and no execution-provider configuration — `OnnxScamClassifier` reports `InferenceBackend.CPU`, which is what actually executes.
+
+The `InferenceBackend` enum carries NPU and GPU values so the result screen can *report* a backend honestly once one exists, but **no backend-selection policy is implemented yet**. Adding a QNN/NNAPI execution provider and validating it on iQOO hardware is roadmap work, not shipped work.
+
+> Required wording: *"The current classifier runs through ONNX Runtime on CPU. iQOO 15 Snapdragon NPU/QNN validation is still pending target-hardware access."*
 
 ---
 
@@ -228,7 +232,7 @@ Fast, simple, and understandable to a non-technical user — no security jargon.
 
 **MVP — implemented today:** Message · Link · QR · Camera/OCR · Voice · Email · Live Guard
 
-**Validated today:** 98.7% held-out accuracy of the on-device classifier (F1 0.95, ROC-AUC 0.99) on the public UCI SMS Spam Collection — 5,574 messages.
+**Validated today:** **98.65% held-out accuracy on the UCI SMS Spam Collection** — 5,574 real labelled SMS, 1,115 in the test split (precision 0.959, recall 0.940, F1 0.949, ROC-AUC 0.992).
 
 This is a component-level, public-benchmark result — spam vs. ham, not "scam detection in the wild." It contributes at most 30% of the final risk score; the deterministic rules layer carries the rest, including patterns this corpus never saw.
 

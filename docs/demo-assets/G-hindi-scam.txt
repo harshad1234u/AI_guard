@@ -1,0 +1,18 @@
+DEMO INPUT — synthetic Hindi scam-call script.
+Surface: Voice / Live Guard / Check Message
+------------------------------------------------------------------------
+मैं एसबीआई से बोल रहा हूँ। आपका अकाउंट आज बंद हो जाएगा। अभी आपको एक OTP आया होगा, वो मुझे बताइए।
+------------------------------------------------------------------------
+Expected band: MEDIUM or above   (band — the test asserts at least MEDIUM)
+Expected observations: OTP_REQUEST, URGENCY, ACCOUNT_THREAT,
+                       ORGANISATION_IMPERSONATION
+
+ML: genuinely OFF. The classifier's UCI-SMS vocabulary contains no
+Devanagari, so the feature vector is all zeros and OnnxScamClassifier
+reports itself unavailable rather than returning its prior. This is the
+production condition for Hindi, not a demo shortcut.
+
+The measurement worth stating out loud: through the frozen English-only
+extractor this exact script produced zero observations and scored LOW. The
+deterministic multilingual layer is what closes that gap — no model, no
+translation service, no network.
